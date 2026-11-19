@@ -51,6 +51,19 @@ class MinecraftImporterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Supply --cfr-jar"):
             import_and_transpile(archive, self.root / "binary-out", "lua")
 
+    def test_source_archive_rejects_traversal_paths(self):
+        archive = self.root / "unsafe-sources.zip"
+        with zipfile.ZipFile(archive, "w") as handle:
+            handle.writestr("../outside.java", "class Outside {}")
+            handle.writestr(r"..\outside-windows.java", "class OutsideWindows {}")
+            handle.writestr("C:/outside-drive.java", "class OutsideDrive {}")
+            handle.writestr("safe/Inside.java", "class Inside {}")
+        destination = self.root / "extracted"
+        count = safe_archive_sources(archive, destination)
+        self.assertEqual(count, 1)
+        self.assertTrue((destination / "safe" / "Inside.java").is_file())
+        self.assertFalse((self.root / "outside.java").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
