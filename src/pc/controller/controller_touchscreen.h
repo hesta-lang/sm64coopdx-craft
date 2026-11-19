@@ -1,6 +1,7 @@
 #ifndef CONTROLLER_TOUCHSCREEN_H
 #define CONTROLLER_TOUCHSCREEN_H
 #ifdef TOUCH_CONTROLS
+#include <SDL.h>
 #include "pc/configfile.h"
 
 #define HIDE_POS -1000
