@@ -566,9 +566,10 @@ def lua_backend(class_ir: dict[str, Any]) -> tuple[str, int, list[str]]:
     return "\n".join(lines), generated, skipped
 
 
-def c_backend(class_ir: dict[str, Any]) -> tuple[str, str, int, list[str]]:
+def c_backend(class_ir: dict[str, Any], file_base: str) -> tuple[str, str, int, list[str]]:
     name = sanitize_identifier(class_ir["name"], "c")
-    guard = f"MC2SM64_{name.upper()}_H"
+    file_base = sanitize_identifier(file_base, "c")
+    guard = f"MC2SM64_{file_base.upper()}_H"
     prototypes, definitions, skipped, generated = [], [], [], 0
     for method in class_ir["methods"]:
         if not method["supported"]:
@@ -599,7 +600,7 @@ def c_backend(class_ir: dict[str, Any]) -> tuple[str, str, int, list[str]]:
         "#include <stdint.h>", "", *prototypes, "", "#endif", "",
     ])
     source = "\n".join([
-        f'#include "{name}.h"', "#include <math.h>", "#include <stdbool.h>",
+        f'#include "{file_base}.h"', "#include <math.h>", "#include <stdbool.h>",
         "#include <stdint.h>", "", "#ifndef M_PI",
         "#define M_PI 3.14159265358979323846", "#endif", "", *definitions,
     ])
@@ -642,7 +643,7 @@ def transpile(input_path: Path, output_path: Path, target: str,
                 generated["lua"] += count
                 unsupported_methods.extend(f"{class_ir['qualified_name']}.{x}" for x in skipped)
             if target in {"c", "both"}:
-                header, source_text, count, skipped = c_backend(class_ir)
+                header, source_text, count, skipped = c_backend(class_ir, slug.replace('.', '_'))
                 if count:
                     c_dir = output_path / "c"
                     c_dir.mkdir(exist_ok=True)
