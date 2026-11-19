@@ -1523,9 +1523,13 @@ void update_mario_joystick_inputs(struct MarioState *m) {
     if ((sCurrPlayMode == PLAY_MODE_PAUSED) || m->playerIndex != 0) { return; }
 
     if (m->intendedMag > 0.0f) {
-        if (gLakituState.mode != CAMERA_MODE_NEWCAM) {
+        if (stevecraft_runtime_is_enabled()) {
+            /* Front third-person view rotates the camera by 180 degrees;
+             * movement must still use Steve's unflipped look yaw. */
+            m->intendedYaw = atan2s(-controller->stickY, controller->stickX) + gFirstPersonCamera.yaw;
+        } else if (gLakituState.mode != CAMERA_MODE_NEWCAM) {
             m->intendedYaw = atan2s(-controller->stickY, controller->stickX) + m->area->camera->yaw;
-        } else if (get_first_person_enabled() || stevecraft_runtime_is_enabled()) {
+        } else if (get_first_person_enabled()) {
             m->intendedYaw = atan2s(-controller->stickY, controller->stickX) + gLakituState.yaw;
         } else {
             m->intendedYaw = atan2s(-controller->stickY, controller->stickX) - gNewCamera.yaw + 0x4000;
