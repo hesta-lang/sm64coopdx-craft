@@ -6,6 +6,7 @@
 #include "game/level_update.h"
 #include "game/area.h"
 #include "game/mario.h"
+#include "game/stevecraft_player_proxy.h"
 #include "game/mario_step.h"
 #include "game/mario_actions_stationary.h"
 #include "audio/external.h"
@@ -43,6 +44,95 @@ bool smlua_functions_valid_param_range(lua_State* L, int min, int max) {
   ///////////
  // table //
 ///////////
+
+/* SteveCraft native bridge. Generated Lua from Java calls these mapped APIs. */
+int smlua_func_stevecraft_player_proxy_enable(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 1)) { return 0; }
+    bool enabled = smlua_to_boolean(L, 1);
+    if (!gSmLuaConvertSuccess) {
+        LOG_LUA_LINE("stevecraft_player_proxy_enable: invalid boolean");
+        return 0;
+    }
+    stevecraft_player_proxy_enable(enabled ? 1 : 0);
+    return 0;
+}
+
+int smlua_func_stevecraft_player_set_state(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 10)) { return 0; }
+
+    f32 x = smlua_to_number(L, 1);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid x"); return 0; }
+    f32 y = smlua_to_number(L, 2);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid y"); return 0; }
+    f32 z = smlua_to_number(L, 3);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid z"); return 0; }
+    f32 velocityX = smlua_to_number(L, 4);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid velocityX"); return 0; }
+    f32 velocityY = smlua_to_number(L, 5);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid velocityY"); return 0; }
+    f32 velocityZ = smlua_to_number(L, 6);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid velocityZ"); return 0; }
+    f32 yaw = smlua_to_number(L, 7);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid yaw"); return 0; }
+    f32 pitch = smlua_to_number(L, 8);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid pitch"); return 0; }
+    bool onGround = smlua_to_boolean(L, 9);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid onGround"); return 0; }
+    bool crouching = smlua_to_boolean(L, 10);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_state: invalid crouching"); return 0; }
+
+    stevecraft_player_set_state(
+        x, y, z, velocityX, velocityY, velocityZ, yaw, pitch,
+        onGround ? 1 : 0, crouching ? 1 : 0
+    );
+    return 0;
+}
+
+int smlua_func_stevecraft_player_set_hitbox(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 3)) { return 0; }
+    f32 radius = smlua_to_number(L, 1);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_hitbox: invalid radius"); return 0; }
+    f32 height = smlua_to_number(L, 2);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_hitbox: invalid height"); return 0; }
+    f32 downOffset = smlua_to_number(L, 3);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_set_hitbox: invalid downOffset"); return 0; }
+    stevecraft_player_set_hitbox(radius, height, downOffset);
+    return 0;
+}
+
+#define STEVECRAFT_INT_GETTER(luaName, nativeName) \
+int luaName(lua_State *L) { \
+    if (!smlua_functions_valid_param_count(L, 0)) { return 0; } \
+    lua_pushinteger(L, nativeName()); \
+    return 1; \
+}
+
+int smlua_func_stevecraft_player_get_input_x(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 0)) { return 0; }
+    lua_pushnumber(L, stevecraft_player_get_input_x());
+    return 1;
+}
+
+int smlua_func_stevecraft_player_get_input_z(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 0)) { return 0; }
+    lua_pushnumber(L, stevecraft_player_get_input_z());
+    return 1;
+}
+
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_buttons_down, stevecraft_player_get_buttons_down)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_buttons_pressed, stevecraft_player_get_buttons_pressed)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_engine_action, stevecraft_player_get_engine_action)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_engine_action_arg, stevecraft_player_get_engine_action_arg)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_engine_action_timer, stevecraft_player_get_engine_action_timer)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_health, stevecraft_player_get_health)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_hurt_counter, stevecraft_player_get_hurt_counter)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_engine_on_ground, stevecraft_player_get_engine_on_ground)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_engine_interacting, stevecraft_player_get_engine_interacting)
+STEVECRAFT_INT_GETTER(smlua_func_stevecraft_player_get_engine_riding, stevecraft_player_get_engine_riding)
+
+#undef STEVECRAFT_INT_GETTER
+
+
 
 int smlua_func_table_copy(lua_State *L) {
     LUA_STACK_CHECK_BEGIN_NUM(L, 1);
@@ -1088,6 +1178,23 @@ void smlua_bind_functions(void) {
     lua_State* L = gLuaState;
 
     // misc
+
+    smlua_bind_function(L, "stevecraft_player_proxy_enable", smlua_func_stevecraft_player_proxy_enable);
+    smlua_bind_function(L, "stevecraft_player_set_state", smlua_func_stevecraft_player_set_state);
+    smlua_bind_function(L, "stevecraft_player_set_hitbox", smlua_func_stevecraft_player_set_hitbox);
+    smlua_bind_function(L, "stevecraft_player_get_input_x", smlua_func_stevecraft_player_get_input_x);
+    smlua_bind_function(L, "stevecraft_player_get_input_z", smlua_func_stevecraft_player_get_input_z);
+    smlua_bind_function(L, "stevecraft_player_get_buttons_down", smlua_func_stevecraft_player_get_buttons_down);
+    smlua_bind_function(L, "stevecraft_player_get_buttons_pressed", smlua_func_stevecraft_player_get_buttons_pressed);
+    smlua_bind_function(L, "stevecraft_player_get_engine_action", smlua_func_stevecraft_player_get_engine_action);
+    smlua_bind_function(L, "stevecraft_player_get_engine_action_arg", smlua_func_stevecraft_player_get_engine_action_arg);
+    smlua_bind_function(L, "stevecraft_player_get_engine_action_timer", smlua_func_stevecraft_player_get_engine_action_timer);
+    smlua_bind_function(L, "stevecraft_player_get_health", smlua_func_stevecraft_player_get_health);
+    smlua_bind_function(L, "stevecraft_player_get_hurt_counter", smlua_func_stevecraft_player_get_hurt_counter);
+    smlua_bind_function(L, "stevecraft_player_get_engine_on_ground", smlua_func_stevecraft_player_get_engine_on_ground);
+    smlua_bind_function(L, "stevecraft_player_get_engine_interacting", smlua_func_stevecraft_player_get_engine_interacting);
+    smlua_bind_function(L, "stevecraft_player_get_engine_riding", smlua_func_stevecraft_player_get_engine_riding);
+
     smlua_bind_function(L, "table_copy", smlua_func_table_copy);
     smlua_bind_function(L, "table_deepcopy", smlua_func_table_deepcopy);
     smlua_bind_function(L, "init_mario_after_warp", smlua_func_init_mario_after_warp);
