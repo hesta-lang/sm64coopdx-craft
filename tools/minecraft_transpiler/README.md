@@ -1,18 +1,18 @@
-# mc2sm64 — Minecraft Java source transpiler (alpha)
+# mc2sm64 — Minecraft Java source importer and transpiler (alpha)
 
 `mc2sm64` is the source-to-source compiler inside SteveCraft's reverse-engineering pipeline. `import_minecraft.py` accepts Java source directories/files/source JARs and can invoke a user-supplied CFR decompiler for a local bytecode JAR. The compiler parses Java with Tree-sitter, writes language-neutral IR JSON, and emits a conservative subset to SM64CoopDX Lua modules and native C helper functions.
 
 ## Important boundary
 
-This is **not** a full Minecraft port and does not promise exact conversion of arbitrary Minecraft code. Minecraft's client/server engine depends on a large Java runtime, game registries, rendering, networking, assets, data-driven systems, and version-specific mappings. A syntactic translation alone cannot reproduce those dependencies.
+This is **not** a full Minecraft port. Minecraft's engine depends on a large Java runtime, game registries, rendering, networking, assets, data-driven systems, and version-specific mappings. A syntactic translation alone cannot reproduce those dependencies.
 
-The transpiler therefore uses an explicit, fail-closed policy:
-- A method is emitted only when every statement/expression in its body belongs to the supported subset.
-- Unknown Java API calls and unsupported syntax produce diagnostics; the method is skipped rather than silently approximated.
+The transpiler uses a fail-closed policy:
+- A method is emitted only when every statement/expression belongs to the supported subset.
+- Unknown Java API calls and unsupported syntax produce diagnostics; the method is skipped instead of silently approximated.
 - Class fields and object state are reported but not emitted.
-- Lua output is a pure module. Mapping it to actual SM64CoopDX hooks, player state, collisions, objects, and network sync is a separate adapter layer.
-- C output contains only static methods using primitive Java types. It must be integrated into the engine and rebuilt; it is not a runtime Lua mod.
-- A normal `.jar` contains bytecode (`.class`), not source. This tool accepts `.java` files, source directories, and source JAR/ZIP files containing `.java`.
+- Lua output is a pure module. SM64CoopDX hooks, player state, collisions, objects, and network sync need a separate adapter.
+- C output contains only primitive-only static helpers; it requires an engine rebuild.
+- A normal `.jar` contains bytecode (`.class`), not source. CFR reconstructs approximate source; it cannot recover comments or all original constructs.
 
 ## Requirements
 
@@ -22,78 +22,87 @@ Python 3.10+.
 python -m pip install -r tools/minecraft_transpiler/requirements.txt
 ```
 
-## Import Minecraft source from a local JAR
+## Import Java source or decompile a local JAR
 
-A normal Minecraft client JAR contains `.class` bytecode, not `.java` source. To inspect that code, obtain the exact-version JAR through your own legitimate Minecraft installation and provide a local CFR decompiler JAR. The importer does not download the game, authenticate to Microsoft, or redistribute the input.
+The importer does not download Minecraft or commit game files. Supply local Java sources or a local bytecode JAR and CFR:
 
 ```sh
-python tools/minecraft_transpiler/import_minecraft.py \
-  --input /path/to/minecraft-client.jar \
-  --cfr-jar /path/to/cfr.jar \
-  --include-package net.minecraft.world.entity \
-  --include-package net.minecraft.world.phys \
-  --out build/minecraft-physics \
+python tools/minecraft_transpiler/import_minecraft.py \\
+  --input /path/to/minecraft-client.jar \\
+  --cfr-jar /path/to/cfr.jar \\
+  --include-package net.minecraft.world.entity \\
+  --out build/minecraft-26.3 \\
   --target lua
 ```
 
-For Java source already available (including a source JAR), omit `--cfr-jar`:
+## Automatic block-state and redstone-state catalog (26.3)
+
+Do **not** author every block or state manually. Minecraft's own data generator writes `reports/blocks.json`. The 26.3 report records each namespaced block ID, its state-property domains, the exact state IDs and property combinations, and the default state marker. The report is an inventory of states, not the implementation of block behavior or redstone tick/update logic.
+
+The extractor creates:
+- `block_states.json`: complete block/property/state inventory, with a SHA-256 hash of the source report.
+- `block_states.lua`: compact Lua state-ID lookup tables and `get_properties(block_id, state_id)`.
+- `redstone_blocks.json`: candidate redstone-related blocks and their state data.
+- `redstone_candidates.lua`: compact Lua index of those candidates.
+- `extract_report.json`: version and item counts.
+
+Redstone candidates are detected from known component IDs and state-property names such as `powered` and `power`. This is a discovery index, not a proof that every candidate shares the same behavior. Java code still has to be analyzed to reproduce signal propagation, neighbor notifications, and scheduled ticks.
+
+### Recommended: generate the catalog from GitHub Actions
+
+Open **Actions → Generate Minecraft Block State Catalog → Run workflow**. The default is `26.3`. The workflow:
+1. Resolves the exact version through Mojang's official version manifest.
+2. Downloads the official server JAR into the temporary runner and verifies its SHA-1.
+3. Runs Mojang's data generator with Java 25.
+4. Extracts the complete block-state catalog and validates both Lua modules.
+5. Uploads the catalog as a workflow artifact. It does not commit the server JAR or generated game files.
+
+### Run locally
+
+Minecraft 26.3 requires Java 25. Run:
 
 ```sh
-python tools/minecraft_transpiler/import_minecraft.py \
-  --input /path/to/mapped-java-sources \
-  --out build/minecraft-source \
-  --target both
+python tools/minecraft_transpiler/download_server_jar.py \\
+  --version 26.3 \\
+  --out /tmp/minecraft-server-26.3.jar
+
+java -DbundlerMainClass=net.minecraft.data.Main \\
+  -jar /tmp/minecraft-server-26.3.jar \\
+  --reports --server --all \\
+  --output /tmp/minecraft-26.3-generated
+
+python tools/minecraft_transpiler/extract_block_states.py \\
+  --input /tmp/minecraft-26.3-generated/reports/blocks.json \\
+  --out build/minecraft-26.3-blocks \\
+  --minecraft-version 26.3
 ```
 
-The importer writes `import_report.json` with source inventory, SHA-256 hashes, package filters, whether CFR was used, and the transpilation report. Use `--max-sources` to cap imported files. Repeat `--include-package` to select multiple package prefixes.
+### Attach the catalog to the Java importer
 
-**CFR is a decompiler, not the original source.** It reconstructs approximate Java from bytecode. It cannot recover original comments, formatting, or every source-level construct. Decompiled output must be checked against the target Minecraft version and mappings.
-
-On Android, this can run in Termux with Python, a Java runtime, the Python requirements, and a CFR JAR stored locally. It can also run in GitHub Actions when the JARs are supplied through a secure, user-controlled input workflow; do not commit Minecraft client JARs or CFR binaries to this public repository.
-
-## Run from the repository root
 ```sh
-python tools/minecraft_transpiler/mc2sm64.py \
-  --input tools/minecraft_transpiler/examples/java \
-  --out build/mc2sm64 \
-  --target both
+python tools/minecraft_transpiler/import_minecraft.py \\
+  --input /path/to/decompiled-minecraft-sources \\
+  --block-report /path/to/generated/reports/blocks.json \\
+  --minecraft-version 26.3 \\
+  --out build/stevecraft-26.3 \\
+  --target lua
 ```
 
-For actual imported source, replace `--input` with a directory of mapped/decompiled `.java` files or a source archive containing them.
+This writes translated Java output to `generated/`, the block-state catalogs to `block_states/`, and both reports to `import_report.json`.
 
-Targets:
-- `--target lua`: generate pure Lua modules for SM64CoopDX mods.
-- `--target c`: generate C headers and source for primitive-only static helpers.
-- `--target both`: generate both outputs.
+## Current Java subset
 
-Add `--strict` to return a non-zero status when any source construct or method is unsupported.
-
-## Output
-
-```text
-build/mc2sm64/
-  ir/             # parsed class and method representation
-  lua/            # Lua modules; not yet registered to game hooks
-  c/              # static C helper functions
-  diagnostics.json # unsupported syntax, API calls, and class state
-  manifest.json    # counts, output list, known limitations
-```
-
-## Currently supported Java subset
-
-- Primitive parameters and return types.
-- Local primitive variables.
+- Primitive parameters and return types; local primitive variables.
 - `return`, assignment, `if/else`, `while`, `break`, and `continue`.
 - Numeric/boolean/string literals.
-- Arithmetic, comparison and logical expressions.
+- Arithmetic, comparison, and logical expressions.
 - Explicit mappings for selected `Math`, `Mth`, and `MathHelper` methods.
 
 ## Not yet supported
 
-- Arbitrary Minecraft APIs, class fields/state, constructors, inheritance, object allocation, generics, arrays, enhanced/ordinary `for`, `switch`, exceptions, lambdas, method references, annotations with runtime semantics, and full Java standard-library behavior.
-- Automatic bytecode decompilation or mapping resolution.
-- Automatic conversion of Minecraft's entity/component/world registries into SM64 systems.
-- Automatic camera, movement, collision, inventory, block, or rendering port.
+- Arbitrary Minecraft APIs, fields/state, constructors, inheritance, object allocation, generics, arrays, `for`, `switch`, exceptions, lambdas, method references, and full Java standard-library behavior.
+- Automatic conversion of redstone update algorithms, neighbor notifications, scheduled ticks, signal propagation, block entities, or world/chunk storage into SM64CoopDX runtime behavior.
+- Automatic camera, movement, collision, inventory, block rendering, or full gameplay port.
 
 ## Mapping extension
 
@@ -107,17 +116,13 @@ Built-in mappings live in `mappings/sm64coopdx.json`. An extra JSON file can add
 }
 ```
 
-Only map a call when its semantics match exactly. Do not map a Minecraft call to a similarly named SM64 function without checking units, coordinate systems, tick rate, and side effects.
-
-## Minecraft source handling
-
-Use source code and mappings for the exact Minecraft version being researched. The importer does not download proprietary game code, bundle Minecraft assets, or bypass a launcher. Keep imported sources outside this repository and supply the local path to `--input`. Ensure your use complies with the applicable game license and modding rules.
+Only map a call when its semantics match exactly. Check units, coordinate systems, tick rate, and side effects.
 
 ## Next engineering milestones
 
-1. Add version-specific Mojang mappings and resolve intermediary/official names before translation.
-2. Extend the IR for fields, constructors, object state, vectors, and the selected entity/component model.
-3. Add semantic adapters for Minecraft registries, entities, world/chunk access, and tick timing.
-4. Define explicit SM64CoopDX runtime bindings for MarioState, camera, collision surfaces, objects, and networking.
-5. Port one isolated system at a time and compare it against reference behavior in Minecraft.
-6. Add generated-code, runtime, and in-game parity tests before calling a subsystem ported.
+1. Resolve official mappings and pin the exact 26.3 source/data version.
+2. Extend the IR for fields, constructors, object state, vectors, and selected block/entity classes.
+3. Reverse-engineer block behavior and redstone logic from Java classes, using the extracted catalog to avoid manually enumerating state variants.
+4. Add adapters for registries, world/chunk access, scheduled ticks, neighbor updates, signal propagation, and tick timing.
+5. Define SM64CoopDX runtime bindings for MarioState, camera, collision surfaces, objects, and networking.
+6. Port one isolated system at a time and compare it against Minecraft reference behavior.
