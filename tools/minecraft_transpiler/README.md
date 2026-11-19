@@ -126,3 +126,23 @@ Only map a call when its semantics match exactly. Check units, coordinate system
 4. Add adapters for registries, world/chunk access, scheduled ticks, neighbor updates, signal propagation, and tick timing.
 5. Define SM64CoopDX runtime bindings for MarioState, camera, collision surfaces, objects, and networking.
 6. Port one isolated system at a time and compare it against Minecraft reference behavior.
+
+
+## SteveCraft player proxy bridge (alpha)
+
+The engine-side bridge lives in `src/game/stevecraft_player_proxy.cpp` and is exposed to Lua through `src/pc/lua/smlua_functions.c`. It keeps Mario as the invisible engine-recognized local player while a separate Steve controller owns the transform.
+
+The frame order is:
+1. After `HOOK_BEFORE_MARIO_UPDATE`, copy Steve's state and hitbox onto the local Mario proxy.
+2. Run the normal SM64CoopDX player update so actors and interactions can still see a player.
+3. Capture the engine's action/damage/interaction feedback.
+4. Run `HOOK_MARIO_UPDATE`, where the Lua controller generated from Java can read input/feedback and publish Steve's next state through mapped calls.
+5. Reapply Steve's transform/hitbox and hide Mario before rendering.
+
+The mapping file `mappings/stevecraft_bridge.json` maps Java calls on `SteveCraftBridge` to the native Lua functions. A working compiler fixture is included at `examples/stevecraft_bridge/PlayerProxyFrame.java`; its test asserts that the generated Lua calls the expected functions. Import or transpile with `--target lua --mapping tools/minecraft_transpiler/mappings/stevecraft_bridge.json`.
+
+### Explicit limits of this stage
+
+This is a synchronization contract, not a complete Minecraft port. Mario's joystick translation is suppressed, but the engine still processes its native player action/interactions to produce compatibility feedback; only Steve's position/velocity is authoritative. The reported `engine_on_ground` value is SM64 floor-contact feedback, not Minecraft ground collision. The native API has no custom Steve renderer, Minecraft voxel/AABB collision implementation, platform displacement bridge, damage conversion, or automatic network replication. Do not treat the transpiled fixture as the port of Minecraft physics.
+
+The next transpiler work is to support Java instance fields, constructors, object allocation/lifecycle, vector and AABB data, and then translate small Minecraft movement/collision classes with explicit mappings for their world/registry dependencies. The importer must continue reporting unsupported constructs instead of silently approximating them.

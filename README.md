@@ -53,3 +53,34 @@ python tools/minecraft_transpiler/import_minecraft.py \
   --out build/stevecraft-26.3 \
   --target lua
 ```
+
+
+## SteveCraft independent player and invisible Mario proxy (alpha)
+
+The `stevecraft_player_proxy` runtime is the first native bridge for the independent-player architecture:
+
+- Steve's controller/transpiled Lua owns the authoritative Minecraft position, velocity, yaw, pitch, grounded flag, and crouching flag.
+- The local `MarioState` is retained as an invisible SM64CoopDX player proxy. It receives Steve's transform and a configurable hitbox so existing engine actors can still detect a local player.
+- The proxy's movement-stick magnitude is suppressed; physical movement is not delegated to Mario. Controller input remains readable by Steve's Lua logic.
+- The engine update is sampled for action, action argument/timer, health, damage counter, floor contact, interaction, and riding feedback. That feedback is available to the transpiled controller.
+- Proxy mode is disabled by default. Turning it off restores the Mario object's original visibility and hitbox dimensions.
+
+The Lua bridge accepts Minecraft units: positions in blocks, velocity in blocks per game tick, angles in degrees, and hitbox dimensions in blocks. The current conversion is `160 / 1.8` SM64 world units per block, with the same origin and axis directions. World-origin offsets, multiplayer ownership, Steve mesh rendering, Minecraft AABB block collision, moving-platform transfer, damage/action translation, and complete engine-object compatibility are not implemented yet.
+
+A Java bridge fixture and mapping are provided at `tools/minecraft_transpiler/examples/stevecraft_bridge` and `tools/minecraft_transpiler/mappings/stevecraft_bridge.json`. Generate its Lua module with:
+
+```sh
+python tools/minecraft_transpiler/mc2sm64.py \
+  --input tools/minecraft_transpiler/examples/stevecraft_bridge \
+  --mapping tools/minecraft_transpiler/mappings/stevecraft_bridge.json \
+  --out build/stevecraft-bridge \
+  --target lua \
+  --strict
+```
+
+This fixture validates that Java bridge calls can be transpiled to the native Lua bindings; it is **not** a transpilation of Minecraft's actual movement or collision implementation. Real Minecraft classes still need the IR support for fields, constructors, object state, vectors/AABBs, inheritance, and their engine dependencies before they can be ported faithfully. The generated module must be loaded and called by the SteveCraft Lua mod on the player update hook; the native bridge does not automatically invent or load a Minecraft controller.
+
+
+## SteveCraft Player Model System
+
+See [the alpha Player Model System guide](docs/stevecraft-player-model-system.md) for per-player DynOS GeoLayout, scale, and animation APIs. The custom animation binding preserves the engine's action-animation ID for compatibility.

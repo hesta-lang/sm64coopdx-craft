@@ -44,6 +44,7 @@
 #include "pc/network/socket/socket.h"
 #include "bettercamera.h"
 #include "first_person_cam.h"
+#include "stevecraft_player_proxy.h"
 
 #define MAX_HANG_PREVENTION 64
 
@@ -1509,6 +1510,14 @@ void update_mario_button_inputs(struct MarioState *m) {
  */
 void update_mario_joystick_inputs(struct MarioState *m) {
     if (!m) { return; }
+
+    /* The independent Steve controller owns movement while Mario is a proxy. */
+    if (m->playerIndex == 0 && stevecraft_player_proxy_is_enabled()) {
+        m->intendedMag = 0.0f;
+        m->intendedYaw = m->faceAngle[1];
+        return;
+    }
+
     struct Controller *controller = m->controller;
     f32 mag = ((controller->stickMag / 64.0f) * (controller->stickMag / 64.0f)) * 64.0f;
 

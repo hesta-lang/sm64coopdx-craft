@@ -5,7 +5,7 @@ on:
     push:
         branches: [ android-dev ]
     pull_request:
-        branches: [ android-dev ]
+        branches: [ android-dev, minecraft-reverse-pipeline-alpha ]
 
 jobs:
     build-linux:
@@ -230,7 +230,7 @@ jobs:
                 path: ./build/us_pc/sm64coopdx_macOS_Intel.zip
 
     build-android:
-        if: ${{ (github.event_name != 'push' || contains(github.event.head_commit.message, '[build]')) && github.event.pull_request.draft == false }}
+        if: ${{ (github.event_name != 'push' || contains(github.event.head_commit.message, '[build]')) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || github.event.pull_request.head.ref == 'stevecraft-independent-player-alpha') }}
         runs-on: ubuntu-22.04
         steps:
             - name: Checkout repository
@@ -241,11 +241,16 @@ jobs:
               with:
                 distribution: 'temurin'
                 java-version: '17'
+                cache: gradle
+                cache-dependency-path: |
+                  platform/gradle/wrapper/gradle-wrapper.properties
+                  platform/build.gradle
+                  platform/app/build.gradle
 
             - name: Install dependencies
               run: |
                 sudo apt update
-                sudo apt install -y build-essential git python3 libglew-dev libsdl2-dev libz-dev libcurl4-openssl-dev g++ zip unzip wget apksigner
+                sudo apt install -y build-essential git python3 zip unzip wget apksigner
                 mkdir -p $HOME/android-sdk/cmdline-tools
                 cd $HOME/android-sdk/cmdline-tools
                 wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O tools.zip
@@ -258,11 +263,61 @@ jobs:
                 sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
                 echo "sdk.dir=$HOME/android-sdk" > $GITHUB_WORKSPACE/platform/local.properties
 
-            - name: Build the game
+            - name: Generate Android source prerequisites
               run: |
-                make -j$(nproc) TOUCH_CONTROLS=1
+                python3 - <<'PY'
+                from pathlib import Path
+                import re
+                import sys
+
+                roots = ("actors", "levels", "src", "bin", "data", "assets", "sound", "include")
+                source_suffixes = {".c", ".h", ".cpp"}
+                include_pattern = re.compile(
+                    r'^\s*#\s*include\s*"([^"]+\.inc\.c)"',
+                    re.MULTILINE,
+                )
+                targets = set()
+
+                for root in roots:
+                    root_path = Path(root)
+                    if not root_path.exists():
+                        continue
+                    for source in root_path.rglob("*"):
+                        if not source.is_file() or source.suffix not in source_suffixes:
+                            continue
+                        try:
+                            content = source.read_text(encoding="utf-8", errors="ignore")
+                        except OSError:
+                            continue
+                        for include in include_pattern.findall(content):
+                            png = Path(include[:-6] + ".png")
+                            if png.is_file():
+                                targets.add(f"build/us_pc/{include}")
+
+                if not targets:
+                    print("No source PNG includes were discovered.", file=sys.stderr)
+                    sys.exit(1)
+
+                output = Path("/tmp/android-texture-targets.txt")
+                output.write_text("\n".join(sorted(targets)) + "\n", encoding="utf-8")
+                print(f"Queued {len(targets)} generated texture include(s).")
+                PY
+
+                make -j"$(nproc)" \
+                  build/us_pc/assets/mario_anim_data.c \
+                  build/us_pc/assets/demo_data.c \
+                  build/us_pc/include/level_headers.h \
+                  build/us_pc/text/us/define_text.inc.c \
+                  build/us_pc/sound/sound_data.ctl.inc.c \
+                  build/us_pc/sound/sound_data.tbl.inc.c \
+                  build/us_pc/sound/sequences.bin.inc.c \
+                  build/us_pc/sound/bank_sets.inc.c \
+                  $(cat /tmp/android-texture-targets.txt)
+
+            - name: Build the Android APK
+              run: |
                 chmod +x ./platform/gradlew
-                ./platform/gradlew assembleRelease
+                ./platform/gradlew --no-daemon assembleRelease
                 apksigner sign \
                   --key platform/android/key.pk8 \
                   --cert platform/android/certificate.pem \

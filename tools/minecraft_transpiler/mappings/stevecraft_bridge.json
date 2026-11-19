@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "static_methods": {
+    "SteveCraftBridge.enable": {
+      "lua": "stevecraft_player_proxy_enable",
+      "c": "stevecraft_player_proxy_enable"
+    },
+    "SteveCraftBridge.setState": {
+      "lua": "stevecraft_player_set_state",
+      "c": "stevecraft_player_set_state"
+    },
+    "SteveCraftBridge.setHitbox": {
+      "lua": "stevecraft_player_set_hitbox",
+      "c": "stevecraft_player_set_hitbox"
+    },
+    "SteveCraftBridge.getInputX": {
+      "lua": "stevecraft_player_get_input_x",
+      "c": "stevecraft_player_get_input_x"
+    },
+    "SteveCraftBridge.getInputZ": {
+      "lua": "stevecraft_player_get_input_z",
+      "c": "stevecraft_player_get_input_z"
+    },
+    "SteveCraftBridge.getButtonsDown": {
+      "lua": "stevecraft_player_get_buttons_down",
+      "c": "stevecraft_player_get_buttons_down"
+    },
+    "SteveCraftBridge.getButtonsPressed": {
+      "lua": "stevecraft_player_get_buttons_pressed",
+      "c": "stevecraft_player_get_buttons_pressed"
+    },
+    "SteveCraftBridge.getEngineAction": {
+      "lua": "stevecraft_player_get_engine_action",
+      "c": "stevecraft_player_get_engine_action"
+    },
+    "SteveCraftBridge.getEngineActionArg": {
+      "lua": "stevecraft_player_get_engine_action_arg",
+      "c": "stevecraft_player_get_engine_action_arg"
+    },
+    "SteveCraftBridge.getEngineActionTimer": {
+      "lua": "stevecraft_player_get_engine_action_timer",
+      "c": "stevecraft_player_get_engine_action_timer"
+    },
+    "SteveCraftBridge.getHealth": {
+      "lua": "stevecraft_player_get_health",
+      "c": "stevecraft_player_get_health"
+    },
+    "SteveCraftBridge.getHurtCounter": {
+      "lua": "stevecraft_player_get_hurt_counter",
+      "c": "stevecraft_player_get_hurt_counter"
+    },
+    "SteveCraftBridge.getEngineOnGround": {
+      "lua": "stevecraft_player_get_engine_on_ground",
+      "c": "stevecraft_player_get_engine_on_ground"
+    },
+    "SteveCraftBridge.getEngineInteracting": {
+      "lua": "stevecraft_player_get_engine_interacting",
+      "c": "stevecraft_player_get_engine_interacting"
+    },
+    "SteveCraftBridge.getEngineRiding": {
+      "lua": "stevecraft_player_get_engine_riding",
+      "c": "stevecraft_player_get_engine_riding"
+    },
+    "SteveCraftBridge.setModel": {
+      "lua": "stevecraft_player_model_set_model",
+      "c": "stevecraft_player_model_set_model"
+    },
+    "SteveCraftBridge.setScale": {
+      "lua": "stevecraft_player_model_set_scale",
+      "c": "stevecraft_player_model_set_scale"
+    },
+    "SteveCraftBridge.setAnimation": {
+      "lua": "stevecraft_player_model_set_animation",
+      "c": "stevecraft_player_model_set_animation"
+    },
+    "SteveCraftBridge.clearModel": {
+      "lua": "stevecraft_player_model_clear",
+      "c": "stevecraft_player_model_clear"
+    }
+  },
+  "static_fields": {}
+}
