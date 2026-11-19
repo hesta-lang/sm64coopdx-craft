@@ -6,6 +6,7 @@ on:
     branches:
       - android
       - stevecraft-native-integration-alpha
+      - minecraft-reverse-pipeline-alpha
     paths:
       - 'tools/minecraft_transpiler/**'
       - 'tests/minecraft_transpiler/**'
