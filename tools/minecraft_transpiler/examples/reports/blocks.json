@@ -1,0 +1,27 @@
+{
+  "minecraft:stone": {
+    "states": [
+      {"id": 1, "default": true, "properties": {}}
+    ]
+  },
+  "minecraft:redstone_wire": {
+    "properties": {
+      "east": ["none", "side", "up"],
+      "power": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"],
+      "west": ["none", "side", "up"]
+    },
+    "states": [
+      {"id": 2, "default": true, "properties": {"east": "none", "power": "0", "west": "none"}},
+      {"id": 3, "properties": {"east": "side", "power": "15", "west": "up"}}
+    ]
+  },
+  "minecraft:oak_door": {
+    "properties": {
+      "open": ["true", "false"],
+      "powered": ["true", "false"]
+    },
+    "states": [
+      {"id": 4, "default": true, "properties": {"open": "false", "powered": "false"}}
+    ]
+  }
+}
