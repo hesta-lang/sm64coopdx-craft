@@ -71,6 +71,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.4
-          luac5.4 -p "$RUNNER_TEMP/mc2sm64-output/lua"/*.lua
-          luac5.4 -p "$RUNNER_TEMP/mc2sm64-import/generated/lua"/*.lua
-          luac5.4 -p "$RUNNER_TEMP/minecraft-block-fixture"/*.lua
+          for lua_file in "$RUNNER_TEMP/mc2sm64-output/lua/"*.lua \
+                          "$RUNNER_TEMP/mc2sm64-import/generated/lua/"*.lua \
+                          "$RUNNER_TEMP/minecraft-block-fixture/"*.lua; do
+            [ -e "$lua_file" ] || continue
+            luac5.4 -p "$lua_file"
+          done
