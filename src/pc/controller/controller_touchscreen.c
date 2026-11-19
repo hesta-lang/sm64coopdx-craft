@@ -17,6 +17,7 @@
 #include "game/game_init.h"
 #include "game/memory.h"
 #include "game/segment2.h"
+#include "game/stevecraft_runtime.h"
 #include "game/object_helpers.h"
 #include "gfx_dimensions.h"
 #include "pc/pc_main.h"
@@ -136,6 +137,16 @@ Colors get_color(ConfigControlElement *config) {
     return ret;
 }
 
+static SDL_TouchID sSteveCraftCameraTouchId = 0;
+static s16 sSteveCraftCameraLastX = 0;
+static s16 sSteveCraftCameraLastY = 0;
+
+static s16 stevecraft_clamp_touch_delta(s32 value) {
+    if (value > 32767) return 32767;
+    if (value < -32768) return -32768;
+    return (s16)value;
+}
+
 void move_touch_element(struct TouchEvent *event, enum ConfigControlElementIndex i) {
     ConfigControlElement *config = &configControlElements[i];
 
@@ -167,7 +178,37 @@ void touch_down(struct TouchEvent* event) {
     gGamepadActive = false;
     struct Position pos;
     s32 size;
+
+    if (sSteveCraftCameraTouchId == 0
+        && stevecraft_runtime_is_enabled()
+        && !gInTouchConfig
+        && !gDjuiPanelPauseCreated
+        && !gDjuiInMainMenu
+        && CORRECT_TOUCH_X(event->x) > (SCREEN_WIDTH_API / 2)) {
+        bool overControl = false;
+        for (u32 i = 0; i < controlElementsLength; i++) {
+            if (i == TOUCH_MOUSE || controlElements[i].type == Mouse) continue;
+            pos = get_pos(&configControlElements[i]);
+            if (pos.y == HIDE_POS) continue;
+            size = configControlElements[i].size * 100;
+            if (TRIGGER_DETECT(size)) {
+                overControl = true;
+                break;
+            }
+        }
+
+        if (!overControl) {
+            sSteveCraftCameraTouchId = event->touchID;
+            sSteveCraftCameraLastX = (s16)CORRECT_TOUCH_X(event->x);
+            sSteveCraftCameraLastY = (s16)CORRECT_TOUCH_Y(event->y);
+            touch_x = 0;
+            touch_y = 0;
+            return;
+        }
+    }
+
     for(u32 i = 0; i < controlElementsLength; i++) {
+        if (stevecraft_runtime_is_enabled() && i == TOUCH_MOUSE) continue;
         if (controlElements[i].touchID == 0) {
             pos = get_pos(&configControlElements[i]);
             if (pos.y == HIDE_POS) continue;
@@ -200,6 +241,21 @@ void touch_down(struct TouchEvent* event) {
 }
 
 void touch_motion(struct TouchEvent* event) {
+    if (sSteveCraftCameraTouchId != 0 && event->touchID == sSteveCraftCameraTouchId) {
+        if (!stevecraft_runtime_is_enabled()) {
+            sSteveCraftCameraTouchId = 0;
+            return;
+        }
+
+        const s16 currentX = (s16)CORRECT_TOUCH_X(event->x);
+        const s16 currentY = (s16)CORRECT_TOUCH_Y(event->y);
+        touch_x = stevecraft_clamp_touch_delta((s32)touch_x + currentX - sSteveCraftCameraLastX);
+        touch_y = stevecraft_clamp_touch_delta((s32)touch_y + currentY - sSteveCraftCameraLastY);
+        sSteveCraftCameraLastX = currentX;
+        sSteveCraftCameraLastY = currentY;
+        return;
+    }
+
     struct Position pos;
     s32 size;
     for(u32 i = 0; i < controlElementsLength; i++) {
@@ -308,6 +364,10 @@ static void handle_touch_up(u32 i) { // separated for when the layout changes
 }
 
 void touch_up(struct TouchEvent* event) {
+    if (sSteveCraftCameraTouchId != 0 && event->touchID == sSteveCraftCameraTouchId) {
+        sSteveCraftCameraTouchId = 0;
+        return;
+    }
     for(u32 i = 0; i < controlElementsLength; i++) {
         if (controlElements[i].touchID == event->touchID) {
             handle_touch_up(i);
@@ -379,6 +439,13 @@ void render_touch_controls(void) {
 }
 
 static void touchscreen_init(void) {
+    sSteveCraftCameraTouchId = 0;
+    sSteveCraftCameraLastX = 0;
+    sSteveCraftCameraLastY = 0;
+    touch_x = 0;
+    touch_y = 0;
+    before_x = 0;
+    before_y = 0;
     for (u32 i = 0; i < controlElementsLength; i++) {
         controlElements[i].touchID = 0;
         controlElements[i].joyX = 0;

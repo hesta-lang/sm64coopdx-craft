@@ -6,6 +6,7 @@
 #include "game/level_update.h"
 #include "game/area.h"
 #include "game/mario.h"
+#include "game/stevecraft_runtime.h"
 #include "game/mario_step.h"
 #include "game/mario_actions_stationary.h"
 #include "audio/external.h"
@@ -43,6 +44,28 @@ bool smlua_functions_valid_param_range(lua_State* L, int min, int max) {
   ///////////
  // table //
 ///////////
+
+int smlua_func_stevecraft_camera_enable(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 1)) { return 0; }
+    bool enabled = smlua_to_boolean(L, 1);
+    if (!gSmLuaConvertSuccess) {
+        LOG_LUA_LINE("stevecraft_camera_enable: invalid boolean");
+        return 0;
+    }
+    stevecraft_runtime_enable(enabled ? 1 : 0);
+    return 1;
+}
+
+int smlua_func_stevecraft_camera_set_perspective(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 1)) { return 0; }
+    s32 perspective = smlua_to_integer(L, 1);
+    if (!gSmLuaConvertSuccess || perspective < 0 || perspective > 2) {
+        LOG_LUA_LINE("stevecraft_camera_set_perspective: expected perspective 0, 1 or 2");
+        return 0;
+    }
+    stevecraft_camera_set_perspective(perspective);
+    return 1;
+}
 
 int smlua_func_table_copy(lua_State *L) {
     LUA_STACK_CHECK_BEGIN_NUM(L, 1);
@@ -1088,6 +1111,8 @@ void smlua_bind_functions(void) {
     lua_State* L = gLuaState;
 
     // misc
+    smlua_bind_function(L, "stevecraft_camera_enable", smlua_func_stevecraft_camera_enable);
+    smlua_bind_function(L, "stevecraft_camera_set_perspective", smlua_func_stevecraft_camera_set_perspective);
     smlua_bind_function(L, "table_copy", smlua_func_table_copy);
     smlua_bind_function(L, "table_deepcopy", smlua_func_table_deepcopy);
     smlua_bind_function(L, "init_mario_after_warp", smlua_func_init_mario_after_warp);
