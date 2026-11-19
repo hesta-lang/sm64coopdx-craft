@@ -5,7 +5,7 @@ on:
     push:
         branches: [ android-dev, stevecraft-native-integration-alpha ]
     pull_request:
-        branches: [ android-dev, stevecraft-native-integration-alpha ]
+        branches: [ android, android-dev ]
 
 jobs:
     build-linux:
