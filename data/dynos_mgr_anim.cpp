@@ -62,6 +62,11 @@ void DynOS_Anim_Swap(void *aPtr) {
         return;
     }
 
+    /* A named Player Model System animation already targets this independent rig. */
+    if (smlua_anim_util_get_current_animation_name(_Object) != NULL) {
+        return;
+    }
+
     // Determine if this call is the "swap" phase or "restore" phase.
     // The engine calls DynOS_Anim_Swap twice around geo_set_animation_globals.
     const bool restoring = (sCurrAnimSwapIndex > 0 && sAnimSwapFrames[sCurrAnimSwapIndex - 1].obj == _Object);

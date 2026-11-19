@@ -27,6 +27,10 @@ class SteveCraftBridgeTranspilerTests(unittest.TestCase):
             self.assertIn("stevecraft_player_set_hitbox", generated)
             self.assertIn("stevecraft_player_get_engine_action", generated)
             self.assertIn("stevecraft_player_get_engine_interacting", generated)
+            self.assertIn("stevecraft_player_model_set_model", generated)
+            self.assertIn("stevecraft_player_model_set_scale", generated)
+            self.assertIn("stevecraft_player_model_set_animation", generated)
+            self.assertIn("stevecraft_player_model_clear", generated)
 
 
 if __name__ == "__main__":

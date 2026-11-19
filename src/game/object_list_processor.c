@@ -23,6 +23,7 @@
 #include "spawn_object.h"
 #include "first_person_cam.h"
 #include "game/stevecraft_player_proxy.h"
+#include "game/stevecraft_player_model.h"
 #include "engine/math_util.h"
 #include "pc/network/network.h"
 #include "pc/lua/smlua.h"
@@ -293,7 +294,10 @@ void bhv_mario_update(void) {
         }
     }
 
-    update_character_anim_offset(gMarioState);
+    if (!stevecraft_player_model_is_enabled(gMarioState->playerIndex)) {
+        update_character_anim_offset(gMarioState);
+    }
+    stevecraft_player_model_update_mario(gMarioState);
 
     // reset mario state to the local player
     gInteractionInvulnerable = false;

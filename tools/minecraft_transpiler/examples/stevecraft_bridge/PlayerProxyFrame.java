@@ -23,6 +23,22 @@ public final class PlayerProxyFrame {
         );
     }
 
+    public static boolean selectModel(int playerIndex, int extendedModelId) {
+        return SteveCraftBridge.setModel(playerIndex, extendedModelId);
+    }
+
+    public static boolean setModelScale(int playerIndex, float scaleX, float scaleY, float scaleZ) {
+        return SteveCraftBridge.setScale(playerIndex, scaleX, scaleY, scaleZ);
+    }
+
+    public static boolean selectAnimation(int playerIndex, String animationName) {
+        return SteveCraftBridge.setAnimation(playerIndex, animationName);
+    }
+
+    public static void clearModel(int playerIndex) {
+        SteveCraftBridge.clearModel(playerIndex);
+    }
+
     public static float readMoveX() {
         return SteveCraftBridge.getInputX();
     }

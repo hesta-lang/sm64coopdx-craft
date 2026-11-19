@@ -79,3 +79,8 @@ python tools/minecraft_transpiler/mc2sm64.py \
 ```
 
 This fixture validates that Java bridge calls can be transpiled to the native Lua bindings; it is **not** a transpilation of Minecraft's actual movement or collision implementation. Real Minecraft classes still need the IR support for fields, constructors, object state, vectors/AABBs, inheritance, and their engine dependencies before they can be ported faithfully. The generated module must be loaded and called by the SteveCraft Lua mod on the player update hook; the native bridge does not automatically invent or load a Minecraft controller.
+
+
+## SteveCraft Player Model System
+
+See [the alpha Player Model System guide](docs/stevecraft-player-model-system.md) for per-player DynOS GeoLayout, scale, and animation APIs.

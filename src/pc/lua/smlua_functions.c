@@ -7,6 +7,7 @@
 #include "game/area.h"
 #include "game/mario.h"
 #include "game/stevecraft_player_proxy.h"
+#include "game/stevecraft_player_model.h"
 #include "game/mario_step.h"
 #include "game/mario_actions_stationary.h"
 #include "audio/external.h"
@@ -54,6 +55,61 @@ int smlua_func_stevecraft_player_proxy_enable(lua_State *L) {
         return 0;
     }
     stevecraft_player_proxy_enable(enabled ? 1 : 0);
+    return 0;
+}
+
+/* Player Model System: IDs are extended model IDs from smlua_model_util_get_id(). */
+int smlua_func_stevecraft_player_model_set_model(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 2)) { return 0; }
+    f32 playerIndex = smlua_to_number(L, 1);
+    if (!gSmLuaConvertSuccess || playerIndex < 0.0f || playerIndex > 255.0f || playerIndex != (s32)playerIndex) {
+        LOG_LUA_LINE("stevecraft_player_model_set_model: invalid player index"); return 0;
+    }
+    f32 modelId = smlua_to_number(L, 2);
+    if (!gSmLuaConvertSuccess || modelId <= 0.0f || modelId > 65535.0f || modelId != (s32)modelId) {
+        LOG_LUA_LINE("stevecraft_player_model_set_model: invalid extended model ID"); return 0;
+    }
+    lua_pushboolean(L, stevecraft_player_model_set_model((s32)playerIndex, (s32)modelId) != 0);
+    return 1;
+}
+
+int smlua_func_stevecraft_player_model_set_scale(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 4)) { return 0; }
+    f32 playerIndex = smlua_to_number(L, 1);
+    if (!gSmLuaConvertSuccess || playerIndex < 0.0f || playerIndex > 255.0f || playerIndex != (s32)playerIndex) {
+        LOG_LUA_LINE("stevecraft_player_model_set_scale: invalid player index"); return 0;
+    }
+    f32 x = smlua_to_number(L, 2);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_model_set_scale: invalid X scale"); return 0; }
+    f32 y = smlua_to_number(L, 3);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_model_set_scale: invalid Y scale"); return 0; }
+    f32 z = smlua_to_number(L, 4);
+    if (!gSmLuaConvertSuccess) { LOG_LUA_LINE("stevecraft_player_model_set_scale: invalid Z scale"); return 0; }
+    lua_pushboolean(L, stevecraft_player_model_set_scale((s32)playerIndex, x, y, z) != 0);
+    return 1;
+}
+
+int smlua_func_stevecraft_player_model_set_animation(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 2)) { return 0; }
+    f32 playerIndex = smlua_to_number(L, 1);
+    if (!gSmLuaConvertSuccess || playerIndex < 0.0f || playerIndex > 255.0f || playerIndex != (s32)playerIndex) {
+        LOG_LUA_LINE("stevecraft_player_model_set_animation: invalid player index"); return 0;
+    }
+    const char *name = smlua_to_string(L, 2);
+    if (!gSmLuaConvertSuccess || name == NULL) {
+        LOG_LUA_LINE("stevecraft_player_model_set_animation: invalid animation name"); return 0;
+    }
+    lua_pushboolean(L, stevecraft_player_model_set_animation((s32)playerIndex, name) != 0);
+    return 1;
+}
+
+int smlua_func_stevecraft_player_model_clear(lua_State *L) {
+    if (!smlua_functions_valid_param_count(L, 1)) { return 0; }
+    f32 playerIndex = smlua_to_number(L, 1);
+    if (!gSmLuaConvertSuccess || playerIndex < 0.0f || playerIndex > 255.0f || playerIndex != (s32)playerIndex) {
+        LOG_LUA_LINE("stevecraft_player_model_clear: invalid player index"); return 0;
+    }
+    stevecraft_player_model_clear((s32)playerIndex);
     return 0;
 }
 
@@ -1180,6 +1236,10 @@ void smlua_bind_functions(void) {
     // misc
 
     smlua_bind_function(L, "stevecraft_player_proxy_enable", smlua_func_stevecraft_player_proxy_enable);
+    smlua_bind_function(L, "stevecraft_player_model_set_model", smlua_func_stevecraft_player_model_set_model);
+    smlua_bind_function(L, "stevecraft_player_model_set_scale", smlua_func_stevecraft_player_model_set_scale);
+    smlua_bind_function(L, "stevecraft_player_model_set_animation", smlua_func_stevecraft_player_model_set_animation);
+    smlua_bind_function(L, "stevecraft_player_model_clear", smlua_func_stevecraft_player_model_clear);
     smlua_bind_function(L, "stevecraft_player_set_state", smlua_func_stevecraft_player_set_state);
     smlua_bind_function(L, "stevecraft_player_set_hitbox", smlua_func_stevecraft_player_set_hitbox);
     smlua_bind_function(L, "stevecraft_player_get_input_x", smlua_func_stevecraft_player_get_input_x);
