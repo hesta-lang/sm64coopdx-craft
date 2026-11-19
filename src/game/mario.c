@@ -44,6 +44,7 @@
 #include "pc/network/socket/socket.h"
 #include "bettercamera.h"
 #include "first_person_cam.h"
+#include "stevecraft_runtime.h"
 
 #define MAX_HANG_PREVENTION 64
 
@@ -1524,7 +1525,7 @@ void update_mario_joystick_inputs(struct MarioState *m) {
     if (m->intendedMag > 0.0f) {
         if (gLakituState.mode != CAMERA_MODE_NEWCAM) {
             m->intendedYaw = atan2s(-controller->stickY, controller->stickX) + m->area->camera->yaw;
-        } else if (get_first_person_enabled()) {
+        } else if (get_first_person_enabled() || stevecraft_runtime_is_enabled()) {
             m->intendedYaw = atan2s(-controller->stickY, controller->stickX) + gLakituState.yaw;
         } else {
             m->intendedYaw = atan2s(-controller->stickY, controller->stickX) - gNewCamera.yaw + 0x4000;
