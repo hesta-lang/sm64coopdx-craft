@@ -3,6 +3,9 @@
 
 #include <PR/ultratypes.h>
 
+/* Shared forward declaration for C and C++ translation units. */
+struct MarioState;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
