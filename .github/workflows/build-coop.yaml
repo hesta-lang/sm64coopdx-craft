@@ -307,6 +307,7 @@ jobs:
                   build/us_pc/assets/mario_anim_data.c \
                   build/us_pc/assets/demo_data.c \
                   build/us_pc/include/level_headers.h \
+                  build/us_pc/text/us/define_text.inc.c \
                   $(cat /tmp/android-texture-targets.txt)
 
             - name: Build the Android APK
