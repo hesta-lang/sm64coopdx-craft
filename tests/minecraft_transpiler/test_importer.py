@@ -3,7 +3,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from import_minecraft import import_and_transpile
+from import_minecraft import import_and_transpile, safe_archive_sources
 
 
 class MinecraftImporterTests(unittest.TestCase):
