@@ -45,6 +45,14 @@ jobs:
             --out "$RUNNER_TEMP/mc2sm64-output" \
             --target both \
             --strict
+      - name: Test end-to-end Minecraft source importer
+        run: |
+          python tools/minecraft_transpiler/import_minecraft.py \
+            --input tools/minecraft_transpiler/examples/java \
+            --out "$RUNNER_TEMP/mc2sm64-import" \
+            --target lua \
+            --include-package dev.stevecraft.transpiler
+          test -s "$RUNNER_TEMP/mc2sm64-import/import_report.json"
       - name: Validate generated C
         run: |
           gcc -std=c11 -Wall -Wextra -Werror \
@@ -55,3 +63,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lua5.4
           luac5.4 -p "$RUNNER_TEMP/mc2sm64-output/lua"/*.lua
+          luac5.4 -p "$RUNNER_TEMP/mc2sm64-import/generated/lua"/*.lua
