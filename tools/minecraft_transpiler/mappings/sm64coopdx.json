@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "static_methods": {
+    "Math.abs": {"lua": "math.abs", "c": "fabs"},
+    "Math.ceil": {"lua": "math.ceil", "c": "ceil"},
+    "Math.floor": {"lua": "math.floor", "c": "floor"},
+    "Math.max": {"lua": "math.max", "c": "fmax"},
+    "Math.min": {"lua": "math.min", "c": "fmin"},
+    "Math.pow": {"lua": "math.pow", "c": "pow"},
+    "Math.sqrt": {"lua": "math.sqrt", "c": "sqrt"},
+    "Math.sin": {"lua": "math.sin", "c": "sin"},
+    "Math.cos": {"lua": "math.cos", "c": "cos"},
+    "Math.tan": {"lua": "math.tan", "c": "tan"},
+    "Mth.clamp": {"lua": "@clamp", "c": "@clamp"},
+    "MathHelper.clamp": {"lua": "@clamp", "c": "@clamp"},
+    "Mth.lerp": {"lua": "@lerp", "c": "@lerp"},
+    "MathHelper.lerp": {"lua": "@lerp", "c": "@lerp"}
+  },
+  "static_fields": {
+    "Math.PI": {"lua": "math.pi", "c": "M_PI"},
+    "Math.E": {"lua": "math.exp(1)", "c": "M_E"}
+  }
+}
