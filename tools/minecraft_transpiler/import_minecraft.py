@@ -30,8 +30,11 @@ def safe_archive_sources(archive_path: Path, destination: Path) -> int:
     with zipfile.ZipFile(archive_path) as archive:
         for info in archive.infolist():
             name = info.filename
-            posix = PurePosixPath(name)
-            if posix.is_absolute() or ".." in posix.parts or not name.lower().endswith(".java"):
+            normalized_name = name.replace("\\\\", "/")
+            posix = PurePosixPath(normalized_name)
+            if (posix.is_absolute() or ".." in posix.parts
+                    or (posix.parts and posix.parts[0].endswith(":"))
+                    or not normalized_name.lower().endswith(".java")):
                 continue
             target = destination.joinpath(*posix.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
