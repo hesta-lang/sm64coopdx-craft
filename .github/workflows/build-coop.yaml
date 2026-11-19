@@ -3,9 +3,9 @@ name: Build coop
 on:
     workflow_dispatch:
     push:
-        branches: [ android-dev ]
+        branches: [ android-dev, stevecraft-native-integration-alpha ]
     pull_request:
-        branches: [ android-dev ]
+        branches: [ android-dev, stevecraft-native-integration-alpha ]
 
 jobs:
     build-linux:
@@ -21,7 +21,7 @@ jobs:
                 sudo apt install -y build-essential git python3 libglew-dev libsdl2-dev libz-dev libcurl4-openssl-dev zip
 
             - name: Build the game
-              run: make -j$(nproc)
+              run: make -j$(nproc) TOUCH_CONTROLS=1
 
             - name: Generate hash
               run: |
