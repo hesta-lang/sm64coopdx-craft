@@ -105,7 +105,10 @@ void apply_hitbox(struct MarioState *m) {
     }
 
     const f32 radius = sSteve.hitboxRadiusBlocks * kSm64UnitsPerMinecraftBlock;
-    const f32 height = sSteve.hitboxHeightBlocks * kSm64UnitsPerMinecraftBlock;
+    const f32 heightBlocks = sSteve.crouching
+        ? std::fmin(sSteve.hitboxHeightBlocks, 1.5f)
+        : sSteve.hitboxHeightBlocks;
+    const f32 height = heightBlocks * kSm64UnitsPerMinecraftBlock;
     const f32 downOffset = sSteve.hitboxDownOffsetBlocks * kSm64UnitsPerMinecraftBlock;
     m->marioObj->hitboxRadius = radius;
     m->marioObj->hitboxHeight = height;
