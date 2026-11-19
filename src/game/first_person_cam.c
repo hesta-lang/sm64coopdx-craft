@@ -1,4 +1,5 @@
 #include "first_person_cam.h"
+#include "stevecraft_runtime.h"
 
 #include "sm64.h"
 #include "behavior_data.h"
@@ -52,6 +53,10 @@ bool first_person_check_cancels(struct MarioState *m) {
 }
 
 bool get_first_person_enabled(void) {
+    if (stevecraft_runtime_is_enabled()) {
+        return stevecraft_camera_get_perspective() == STEVECRAFT_PERSPECTIVE_FIRST_PERSON
+            && !first_person_check_cancels(&gMarioStates[0]);
+    }
     return gFirstPersonCamera.enabled && !first_person_check_cancels(&gMarioStates[0]);
 }
 
@@ -154,6 +159,10 @@ static void first_person_camera_update(void) {
 }
 
 void first_person_update(void) {
+    if (stevecraft_runtime_is_enabled() && !gDjuiInMainMenu) {
+        stevecraft_update_camera(&gMarioStates[0]);
+        return;
+    }
     if (gFirstPersonCamera.enabled && !gDjuiInMainMenu) {
         struct MarioState *m = &gMarioStates[0];
 
