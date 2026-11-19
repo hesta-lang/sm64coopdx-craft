@@ -72,13 +72,17 @@ void reset_animation_to_start(Object *object) {
 
     Animation *animation = object->header.gfx.animInfo.curAnim;
     AnimInfo *animInfo = &object->header.gfx.animInfo;
-    animInfo->animID = -1;
-    animInfo->prevAnimID = -1;
+    /* Keep animID/prevAnimID in sync with the engine's action state. They
+     * identify Mario's action animation and are also the guard used by
+     * set_mario_animation(); invalidating them here would make that function
+     * replace this custom rig animation on the next update. */
     animInfo->animFrame = animation->startFrame;
     animInfo->prevAnimFrame = animation->startFrame;
     animInfo->animFrameAccelAssist = animation->startFrame << 16;
     animInfo->animAccel = 0x10000;
     animInfo->animTimer = 0;
+    animInfo->animYTrans = 0;
+    animInfo->prevAnimFrameTimestamp = 0;
     animInfo->prevAnimPtr = nullptr;
 }
 
@@ -230,18 +234,19 @@ extern "C" void stevecraft_player_model_update_mario(struct MarioState *m) {
         const bool isCurrent = currentName
             && std::strcmp(currentName, state->animationName.c_str()) == 0;
 
+        /* Rebind after the vanilla action changes its animation ID. If the
+         * named animation was found, restart it at its own first frame. */
         if (!isCurrent && (!state->animationAttempted || !state->appliedAnimationName.empty())) {
             smlua_anim_util_set_animation(object, state->animationName.c_str());
             currentName = smlua_anim_util_get_current_animation_name(object);
-        }
 
-        if (currentName && std::strcmp(currentName, state->animationName.c_str()) == 0) {
-            if (state->appliedAnimationName != state->animationName) {
+            if (currentName && std::strcmp(currentName, state->animationName.c_str()) == 0) {
                 reset_animation_to_start(object);
                 state->appliedAnimationName = state->animationName;
+                state->animationAttempted = false;
+            } else {
+                state->animationAttempted = true;
             }
-        } else {
-            state->animationAttempted = true;
         }
     }
 
