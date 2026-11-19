@@ -39,6 +39,7 @@ struct EngineFeedback {
 bool sProxyEnabled = false;
 SteveProxyState sSteve;
 EngineFeedback sEngine;
+struct Controller *sLocalController = nullptr;
 struct Object *sSnapshottedObject = nullptr;
 bool sOriginalInvisible = false;
 f32 sOriginalHitboxRadius = 0.0f;
@@ -175,6 +176,9 @@ extern "C" void stevecraft_player_proxy_enable(s32 enabled) {
         sSteve.initialized = false;
     }
     sProxyEnabled = next;
+    if (!next) {
+        sLocalController = nullptr;
+    }
 }
 
 extern "C" s32 stevecraft_player_proxy_is_enabled(void) {
@@ -237,6 +241,7 @@ extern "C" void stevecraft_player_proxy_prepare_mario(struct MarioState *m) {
         return;
     }
 
+    sLocalController = m->controller;
     snapshot_object(m);
     initialize_from_mario(m);
     apply_hitbox(m);
@@ -281,23 +286,23 @@ extern "C" void stevecraft_player_proxy_update_mario(struct MarioState *m) {
 }
 
 extern "C" f32 stevecraft_player_get_input_x(void) {
-    if (!gMarioStates[0].controller) return 0.0f;
-    return gMarioStates[0].controller->stickX / 64.0f;
+    if (!sLocalController) return 0.0f;
+    return sLocalController->stickX / 64.0f;
 }
 
 extern "C" f32 stevecraft_player_get_input_z(void) {
-    if (!gMarioStates[0].controller) return 0.0f;
-    return gMarioStates[0].controller->stickY / 64.0f;
+    if (!sLocalController) return 0.0f;
+    return sLocalController->stickY / 64.0f;
 }
 
 extern "C" s32 stevecraft_player_get_buttons_down(void) {
-    if (!gMarioStates[0].controller) return 0;
-    return static_cast<s32>(gMarioStates[0].controller->buttonDown);
+    if (!sLocalController) return 0;
+    return static_cast<s32>(sLocalController->buttonDown);
 }
 
 extern "C" s32 stevecraft_player_get_buttons_pressed(void) {
-    if (!gMarioStates[0].controller) return 0;
-    return static_cast<s32>(gMarioStates[0].controller->buttonPressed);
+    if (!sLocalController) return 0;
+    return static_cast<s32>(sLocalController->buttonPressed);
 }
 
 extern "C" s32 stevecraft_player_get_engine_action(void) { return sEngine.action; }
