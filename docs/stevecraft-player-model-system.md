@@ -33,7 +33,9 @@ stevecraft_player_model_clear(0)
 
 The model ID must be the extended ID returned by
 `smlua_model_util_get_id`. The animation name must already have been
-registered with `smlua_anim_util_register_animation`.
+registered with `smlua_anim_util_register_animation`. Clearing the profile
+restores a valid engine animation pointer; it never leaves the renderer with a
+null current animation.
 
 ## Animation behavior
 
