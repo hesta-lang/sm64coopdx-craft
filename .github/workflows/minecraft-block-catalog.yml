@@ -1,0 +1,84 @@
+name: Generate Minecraft Block State Catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      minecraft_version:
+        description: Minecraft Java Edition version to process
+        required: true
+        default: '26.3'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Run Mojang data generator and extract block states
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate version input
+        env:
+          MC_VERSION: ${{ inputs.minecraft_version }}
+        run: |
+          if [[ ! "$MC_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "Invalid Minecraft version: $MC_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Download official server JAR and verify SHA-1
+        env:
+          MC_VERSION: ${{ inputs.minecraft_version }}
+        run: |
+          python tools/minecraft_transpiler/download_server_jar.py \
+            --version "$MC_VERSION" \
+            --out "$RUNNER_TEMP/minecraft-server.jar"
+
+      - name: Generate Mojang reports
+        run: |
+          mkdir -p "$RUNNER_TEMP/minecraft-generated"
+          java -DbundlerMainClass=net.minecraft.data.Main \
+            -jar "$RUNNER_TEMP/minecraft-server.jar" \
+            --reports --server --all \
+            --output "$RUNNER_TEMP/minecraft-generated"
+          test -s "$RUNNER_TEMP/minecraft-generated/reports/blocks.json"
+
+      - name: Extract all block states and redstone candidates
+        env:
+          MC_VERSION: ${{ inputs.minecraft_version }}
+        run: |
+          python tools/minecraft_transpiler/extract_block_states.py \
+            --input "$RUNNER_TEMP/minecraft-generated/reports/blocks.json" \
+            --out "$RUNNER_TEMP/stevecraft-block-catalog" \
+            --minecraft-version "$MC_VERSION"
+
+      - name: Validate generated Lua catalogs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+          luac5.4 -p "$RUNNER_TEMP/stevecraft-block-catalog/block_states.lua"
+          luac5.4 -p "$RUNNER_TEMP/stevecraft-block-catalog/redstone_candidates.lua"
+
+      - name: Publish catalogs as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stevecraft-block-catalog-${{ inputs.minecraft_version }}
+          path: |
+            ${{ runner.temp }}/stevecraft-block-catalog/
+            ${{ runner.temp }}/minecraft-generated/reports/blocks.json
+          if-no-files-found: error
+          retention-days: 30
