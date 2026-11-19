@@ -3,7 +3,6 @@
 
 #include <cmath>
 
-#include "game/behavior_actions.h"
 #include "game/mario.h"
 #include "engine/graph_node.h"
 
@@ -251,8 +250,10 @@ extern "C" void stevecraft_player_proxy_capture_engine_state(struct MarioState *
     sEngine.actionTimer = static_cast<s32>(m->actionTimer);
     sEngine.health = static_cast<s32>(m->health);
     sEngine.hurtCounter = static_cast<s32>(m->hurtCounter);
+    /* This reports SM64 floor contact only; Steve's own onGround flag remains
+     * the authority for Minecraft movement and block collision. */
     sEngine.onGround = (m->floor != nullptr)
-        && ((m->action & ACT_GROUP_MASK) != ACT_GROUP_AIRBORNE);
+        && (m->pos[1] <= m->floorHeight + 1.0f);
     sEngine.interacting = (m->interactObj != nullptr) || (m->usedObj != nullptr);
     sEngine.riding = m->riddenObj != nullptr;
 }
