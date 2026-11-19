@@ -22,6 +22,7 @@
 #include "rendering_graph_node.h"
 #include "spawn_object.h"
 #include "first_person_cam.h"
+#include "game/stevecraft_player_proxy.h"
 #include "engine/math_util.h"
 #include "pc/network/network.h"
 #include "pc/lua/smlua.h"
@@ -270,8 +271,13 @@ void bhv_mario_update(void) {
 
     smlua_call_event_hooks(HOOK_BEFORE_MARIO_UPDATE, gMarioState);
 
+    /* Steve owns the transform. Mario only runs as the hidden engine proxy. */
+    stevecraft_player_proxy_prepare_mario(gMarioState);
+
     u32 particleFlags = execute_mario_action(gCurrentObject);
+    stevecraft_player_proxy_capture_engine_state(gMarioState);
     smlua_call_event_hooks(HOOK_MARIO_UPDATE, gMarioState);
+    stevecraft_player_proxy_update_mario(gMarioState);
     particleFlags |= gMarioState->particleFlags;
     gCurrentObject->oMarioParticleFlags = particleFlags;
 
