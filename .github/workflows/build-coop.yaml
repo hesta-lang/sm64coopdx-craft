@@ -5,7 +5,7 @@ on:
     push:
         branches: [ android-dev ]
     pull_request:
-        branches: [ android-dev ]
+        branches: [ android-dev, minecraft-reverse-pipeline-alpha ]
 
 jobs:
     build-linux:
@@ -230,7 +230,7 @@ jobs:
                 path: ./build/us_pc/sm64coopdx_macOS_Intel.zip
 
     build-android:
-        if: ${{ (github.event_name != 'push' || contains(github.event.head_commit.message, '[build]')) && github.event.pull_request.draft == false }}
+        if: ${{ (github.event_name != 'push' || contains(github.event.head_commit.message, '[build]')) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || github.event.pull_request.head.ref == 'stevecraft-independent-player-alpha') }}
         runs-on: ubuntu-22.04
         steps:
             - name: Checkout repository
