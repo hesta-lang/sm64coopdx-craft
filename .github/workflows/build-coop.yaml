@@ -265,10 +265,49 @@ jobs:
 
             - name: Generate Android source prerequisites
               run: |
+                python3 - <<'PY'
+                from pathlib import Path
+                import re
+                import sys
+
+                roots = ("actors", "levels", "src", "bin", "data", "assets", "sound", "include")
+                source_suffixes = {".c", ".h", ".cpp"}
+                include_pattern = re.compile(
+                    r'^\s*#\s*include\s*"([^"]+\\.inc\\.c)"',
+                    re.MULTILINE,
+                )
+                targets = set()
+
+                for root in roots:
+                    root_path = Path(root)
+                    if not root_path.exists():
+                        continue
+                    for source in root_path.rglob("*"):
+                        if not source.is_file() or source.suffix not in source_suffixes:
+                            continue
+                        try:
+                            content = source.read_text(encoding="utf-8", errors="ignore")
+                        except OSError:
+                            continue
+                        for include in include_pattern.findall(content):
+                            png = Path(include[:-6] + ".png")
+                            if png.is_file():
+                                targets.add(f"build/us_pc/{include}")
+
+                if not targets:
+                    print("No source PNG includes were discovered.", file=sys.stderr)
+                    sys.exit(1)
+
+                output = Path("/tmp/android-texture-targets.txt")
+                output.write_text("\n".join(sorted(targets)) + "\n", encoding="utf-8")
+                print(f"Queued {len(targets)} generated texture include(s).")
+                PY
+
                 make -j"$(nproc)" \
                   build/us_pc/assets/mario_anim_data.c \
                   build/us_pc/assets/demo_data.c \
-                  build/us_pc/include/level_headers.h
+                  build/us_pc/include/level_headers.h \
+                  $(cat /tmp/android-texture-targets.txt)
 
             - name: Build the Android APK
               run: |
