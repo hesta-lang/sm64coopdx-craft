@@ -54,6 +54,16 @@ jobs:
             --target lua \
             --include-package dev.stevecraft.transpiler
           test -s "$RUNNER_TEMP/mc2sm64-import/import_report.json"
+      - name: Transpile SteveCraft native bridge fixture
+        run: |
+          python tools/minecraft_transpiler/mc2sm64.py \
+            --input tools/minecraft_transpiler/examples/stevecraft_bridge \
+            --mapping tools/minecraft_transpiler/mappings/stevecraft_bridge.json \
+            --out "$RUNNER_TEMP/stevecraft-bridge" \
+            --target lua \
+            --strict
+          test -s "$RUNNER_TEMP/stevecraft-bridge/lua/dev_stevecraft_bridge_PlayerProxyFrame.lua"
+
       - name: Extract block states from 26.3 fixture
         run: |
           python tools/minecraft_transpiler/extract_block_states.py \
@@ -73,6 +83,7 @@ jobs:
           sudo apt-get install -y lua5.4
           for lua_file in "$RUNNER_TEMP/mc2sm64-output/lua/"*.lua \
                           "$RUNNER_TEMP/mc2sm64-import/generated/lua/"*.lua \
+                          "$RUNNER_TEMP/stevecraft-bridge/lua/"*.lua \
                           "$RUNNER_TEMP/minecraft-block-fixture/"*.lua; do
             [ -e "$lua_file" ] || continue
             luac5.4 -p "$lua_file"
