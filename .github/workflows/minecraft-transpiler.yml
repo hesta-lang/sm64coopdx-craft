@@ -6,6 +6,7 @@ on:
     branches:
       - android
       - stevecraft-native-integration-alpha
+      - minecraft-reverse-pipeline-alpha
     paths:
       - 'tools/minecraft_transpiler/**'
       - 'tests/minecraft_transpiler/**'
@@ -45,6 +46,22 @@ jobs:
             --out "$RUNNER_TEMP/mc2sm64-output" \
             --target both \
             --strict
+      - name: Test end-to-end Minecraft source importer
+        run: |
+          python tools/minecraft_transpiler/import_minecraft.py \
+            --input tools/minecraft_transpiler/examples/java \
+            --out "$RUNNER_TEMP/mc2sm64-import" \
+            --target lua \
+            --include-package dev.stevecraft.transpiler
+          test -s "$RUNNER_TEMP/mc2sm64-import/import_report.json"
+      - name: Extract block states from 26.3 fixture
+        run: |
+          python tools/minecraft_transpiler/extract_block_states.py \
+            --input tools/minecraft_transpiler/examples/reports/blocks.json \
+            --out "$RUNNER_TEMP/minecraft-block-fixture" \
+            --minecraft-version 26.3
+          test -s "$RUNNER_TEMP/minecraft-block-fixture/block_states.json"
+          test -s "$RUNNER_TEMP/minecraft-block-fixture/redstone_blocks.json"
       - name: Validate generated C
         run: |
           gcc -std=c11 -Wall -Wextra -Werror \
@@ -54,4 +71,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.4
-          luac5.4 -p "$RUNNER_TEMP/mc2sm64-output/lua"/*.lua
+          for lua_file in "$RUNNER_TEMP/mc2sm64-output/lua/"*.lua \
+                          "$RUNNER_TEMP/mc2sm64-import/generated/lua/"*.lua \
+                          "$RUNNER_TEMP/minecraft-block-fixture/"*.lua; do
+            [ -e "$lua_file" ] || continue
+            luac5.4 -p "$lua_file"
+          done

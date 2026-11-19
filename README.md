@@ -12,6 +12,7 @@ Contains some code from:\
 [robertkirkman/sm64ex-coop](https://github.com/robertkirkman/sm64ex-coop)
 
 ## Initial Goal (Accomplished)
+
 Create a mod for the PC port where multiple people can play together online.
 
 Unlike previous multiplayer projects, this one synchronizes enemies and events. This allows players to interact with the same world at the same time.
@@ -23,7 +24,32 @@ Interestingly enough though, the goal of the project has slowly evolved over tim
 sm64coopdx is moddable via Lua, similar to Roblox and Garry's Mod's Lua APIs. To get started, click [here](docs/lua/lua.md) to see the Lua documentation. If you want to contribute to the repo, you can view the C documentation [here](docs/c/c.md).
 
 ## Wiki
+
 The wiki is made using GitHub's wiki feature, you can go to the wiki tab or click [here](https://github.com/ManIsCat2/sm64coopdx/wiki).
 
 ## Community
+
 We have an official Discord server open to the public [here](https://discord.gg/TJVKHS4).
+
+## SteveCraft Minecraft reverse-engineering tools
+
+This repository includes an experimental Python pipeline under [`tools/minecraft_transpiler`](tools/minecraft_transpiler/README.md). It imports Java source or a local Minecraft bytecode JAR (using a user-supplied CFR decompiler), builds a language-neutral intermediate representation, and conservatively generates SM64CoopDX Lua modules or native C helpers.
+
+The pipeline also extracts every reported block ID, state ID, property, and allowed value from Mojang's version-specific `reports/blocks.json`. For Minecraft 26.3, it generates compact Lua state lookups and an index of redstone-related candidates, so individual block-state combinations do not need to be authored manually. Redstone update logic still has to be reverse-engineered from Java code and adapted to SM64CoopDX.
+
+The pipeline is **alpha tooling, not a complete Minecraft port**. Unsupported Java constructs and unknown Minecraft APIs are reported instead of being silently approximated. Lua output still needs an explicit SM64CoopDX gameplay adapter and runtime parity tests. Local Minecraft server/client JARs and CFR binaries are not committed to this public repository.
+
+Run **Actions → Generate Minecraft Block State Catalog** to build the catalog. The workflow downloads the official server JAR to a temporary runner, verifies its SHA-1, runs Mojang's data generator, and uploads the results as a workflow artifact. The default target is Minecraft 26.3.
+
+For manual imports, install the Python requirements and run:
+
+```sh
+python -m pip install -r tools/minecraft_transpiler/requirements.txt
+python tools/minecraft_transpiler/import_minecraft.py \
+  --input /path/to/minecraft-client.jar \
+  --cfr-jar /path/to/cfr.jar \
+  --block-report /path/to/generated/reports/blocks.json \
+  --minecraft-version 26.3 \
+  --out build/stevecraft-26.3 \
+  --target lua
+```
