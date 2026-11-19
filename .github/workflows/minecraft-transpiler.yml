@@ -8,7 +8,6 @@ on:
       - minecraft-reverse-pipeline-alpha
       - stevecraft-independent-player-alpha
       - stevecraft-native-integration-alpha
-      - minecraft-reverse-pipeline-alpha
     paths:
       - 'tools/minecraft_transpiler/**'
       - 'tests/minecraft_transpiler/**'
@@ -16,11 +15,11 @@ on:
   pull_request:
     branches:
       - android
+      - minecraft-reverse-pipeline-alpha
     paths:
       - 'tools/minecraft_transpiler/**'
       - 'tests/minecraft_transpiler/**'
       - '.github/workflows/minecraft-transpiler.yml'
-
 permissions:
   contents: read
 
