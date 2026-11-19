@@ -225,10 +225,18 @@ extern "C" void stevecraft_update_camera(struct MarioState *m) {
     Vec3f position = {eye[0], eye[1], eye[2]};
     if (sPerspective != STEVECRAFT_PERSPECTIVE_FIRST_PERSON) {
         float distance = kThirdPersonDistanceBlocks * kUnitsPerMinecraftBlock;
-        const float actualDistance = camera_max_zoom(eye, forward, distance);
-        position[0] -= forward[0] * actualDistance;
-        position[1] -= forward[1] * actualDistance;
-        position[2] -= forward[2] * actualDistance;
+
+        /*
+         * The third-person camera sits behind the look direction. Cast the
+         * collision rays along that same backward vector; casting forward
+         * would test the space in front of Steve and let the camera clip
+         * through walls behind him.
+         */
+        Vec3f backward = {-forward[0], -forward[1], -forward[2]};
+        const float actualDistance = camera_max_zoom(eye, backward, distance);
+        position[0] += backward[0] * actualDistance;
+        position[1] += backward[1] * actualDistance;
+        position[2] += backward[2] * actualDistance;
         m->marioBodyState->modelState = 0;
     } else {
         m->marioBodyState->modelState = 0x100;
