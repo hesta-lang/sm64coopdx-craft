@@ -99,8 +99,10 @@ void apply_touch_look() {
     }
 #endif
 
-    sYaw = static_cast<s16>(sYaw - static_cast<s32>(sensitivityX * 1.5f * deltaX));
-    sPitch = static_cast<s16>(sPitch + static_cast<s32>(sensitivityY * 1.5f * deltaY));
+    const float invertX = camera_config_is_x_inverted() ? -1.0f : 1.0f;
+    const float invertY = camera_config_is_y_inverted() ? -1.0f : 1.0f;
+    sYaw = static_cast<s16>(sYaw - static_cast<s32>(sensitivityX * 1.5f * deltaX * invertX));
+    sPitch = static_cast<s16>(sPitch + static_cast<s32>(sensitivityY * 1.5f * deltaY * invertY));
     sPitch = static_cast<s16>(std::max<s32>(-0x3F00, std::min<s32>(0x3F00, sPitch)));
 }
 
@@ -177,6 +179,10 @@ extern "C" void stevecraft_update_camera(struct MarioState *m) {
     }
 
     apply_touch_look();
+
+    /* The first-person hand viewmodel reads these legacy camera angles. */
+    gFirstPersonCamera.yaw = sYaw;
+    gFirstPersonCamera.pitch = sPitch;
 
     float targetEyeHeight = kStandingEyeHeight;
     if (mario_is_crouching(m)) {
