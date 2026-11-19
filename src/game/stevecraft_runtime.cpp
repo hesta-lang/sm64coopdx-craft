@@ -1,4 +1,5 @@
 #include "sm64.h"
+#include "game/stevecraft_runtime.h"
 
 #include <algorithm>
 #include <cmath>
