@@ -48,7 +48,7 @@ class MinecraftImporterTests(unittest.TestCase):
         archive = self.root / "client.jar"
         with zipfile.ZipFile(archive, "w") as handle:
             handle.writestr("net/minecraft/Example.class", b"\\xca\\xfe\\xba\\xbe")
-        with self.assertRaisesRegex(ValueError, "supply --cfr-jar"):
+        with self.assertRaisesRegex(ValueError, "Supply --cfr-jar"):
             import_and_transpile(archive, self.root / "binary-out", "lua")
 
 
