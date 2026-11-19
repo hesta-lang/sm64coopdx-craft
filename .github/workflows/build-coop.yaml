@@ -241,11 +241,16 @@ jobs:
               with:
                 distribution: 'temurin'
                 java-version: '17'
+                cache: gradle
+                cache-dependency-path: |
+                  platform/gradle/wrapper/gradle-wrapper.properties
+                  platform/build.gradle
+                  platform/app/build.gradle
 
             - name: Install dependencies
               run: |
                 sudo apt update
-                sudo apt install -y build-essential git python3 libglew-dev libsdl2-dev libz-dev libcurl4-openssl-dev g++ zip unzip wget apksigner
+                sudo apt install -y build-essential git python3 zip unzip wget apksigner
                 mkdir -p $HOME/android-sdk/cmdline-tools
                 cd $HOME/android-sdk/cmdline-tools
                 wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O tools.zip
@@ -258,11 +263,17 @@ jobs:
                 sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
                 echo "sdk.dir=$HOME/android-sdk" > $GITHUB_WORKSPACE/platform/local.properties
 
-            - name: Build the game
+            - name: Generate Android source prerequisites
               run: |
-                make -j$(nproc) TOUCH_CONTROLS=1
+                make -j"$(nproc)" \
+                  build/us_pc/assets/mario_anim_data.c \
+                  build/us_pc/assets/demo_data.c \
+                  build/us_pc/include/level_headers.h
+
+            - name: Build the Android APK
+              run: |
                 chmod +x ./platform/gradlew
-                ./platform/gradlew assembleRelease
+                ./platform/gradlew --no-daemon assembleRelease
                 apksigner sign \
                   --key platform/android/key.pk8 \
                   --cert platform/android/certificate.pem \
