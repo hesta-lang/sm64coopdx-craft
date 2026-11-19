@@ -41,7 +41,10 @@ When no named animation override is selected, DynOS can continue to use the
 actor's animation table and the engine's current Mario animation index. When
 a named custom animation is selected, it is bound directly to that player's
 render object. The DynOS animation swapper will not replace a named custom
-animation with one selected from Mario's vanilla animation index.
+animation with one selected from Mario's vanilla animation index. The model
+layer preserves Mario's current action-animation ID as a compatibility marker
+while changing the rendered animation data, so Mario's animation setter does
+not overwrite the independent animation on the next update.
 
 ## Limits of this stage
 

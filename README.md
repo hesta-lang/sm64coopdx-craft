@@ -83,4 +83,4 @@ This fixture validates that Java bridge calls can be transpiled to the native Lu
 
 ## SteveCraft Player Model System
 
-See [the alpha Player Model System guide](docs/stevecraft-player-model-system.md) for per-player DynOS GeoLayout, scale, and animation APIs.
+See [the alpha Player Model System guide](docs/stevecraft-player-model-system.md) for per-player DynOS GeoLayout, scale, and animation APIs. The custom animation binding preserves the engine's action-animation ID for compatibility.
