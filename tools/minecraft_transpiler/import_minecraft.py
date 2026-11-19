@@ -30,7 +30,7 @@ def safe_archive_sources(archive_path: Path, destination: Path) -> int:
     with zipfile.ZipFile(archive_path) as archive:
         for info in archive.infolist():
             name = info.filename
-            normalized_name = name.replace("\\\\", "/")
+            normalized_name = name.replace("\\", "/")
             posix = PurePosixPath(normalized_name)
             if (posix.is_absolute() or ".." in posix.parts
                     or (posix.parts and posix.parts[0].endswith(":"))
