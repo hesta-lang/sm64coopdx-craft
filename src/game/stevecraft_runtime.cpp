@@ -46,6 +46,12 @@ float distance3(const Vec3f a, const Vec3f b) {
     return std::sqrt(x * x + y * y + z * z);
 }
 
+void copy_vec3(float *destination, const float *source) {
+    destination[0] = source[0];
+    destination[1] = source[1];
+    destination[2] = source[2];
+}
+
 float camera_max_zoom(const Vec3f eye, const Vec3f backward, float requestedDistance) {
     float distance = requestedDistance;
     const float probe = kCameraProbeHalfSizeBlocks * kUnitsPerMinecraftBlock;
@@ -113,14 +119,14 @@ void publish_camera(struct MarioState *m, const Vec3f position, const Vec3f focu
     if (!m || !m->area || !m->area->camera) return;
 
     struct Camera *camera = m->area->camera;
-    vec3f_copy(gLakituState.pos, position);
-    vec3f_copy(gLakituState.curPos, position);
-    vec3f_copy(gLakituState.goalPos, position);
-    vec3f_copy(gLakituState.focus, focus);
-    vec3f_copy(gLakituState.curFocus, focus);
-    vec3f_copy(gLakituState.goalFocus, focus);
-    vec3f_copy(camera->pos, position);
-    vec3f_copy(camera->focus, focus);
+    copy_vec3(gLakituState.pos, position);
+    copy_vec3(gLakituState.curPos, position);
+    copy_vec3(gLakituState.goalPos, position);
+    copy_vec3(gLakituState.focus, focus);
+    copy_vec3(gLakituState.curFocus, focus);
+    copy_vec3(gLakituState.goalFocus, focus);
+    copy_vec3(camera->pos, position);
+    copy_vec3(camera->focus, focus);
 
     gLakituState.yaw = viewYaw;
     gLakituState.nextYaw = viewYaw;
