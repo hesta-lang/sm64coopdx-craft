@@ -54,6 +54,14 @@ jobs:
             --target lua \
             --include-package dev.stevecraft.transpiler
           test -s "$RUNNER_TEMP/mc2sm64-import/import_report.json"
+      - name: Extract block states from 26.3 fixture
+        run: |
+          python tools/minecraft_transpiler/extract_block_states.py \
+            --input tools/minecraft_transpiler/examples/reports/blocks.json \
+            --out "$RUNNER_TEMP/minecraft-block-fixture" \
+            --minecraft-version 26.3
+          test -s "$RUNNER_TEMP/minecraft-block-fixture/block_states.json"
+          test -s "$RUNNER_TEMP/minecraft-block-fixture/redstone_blocks.json"
       - name: Validate generated C
         run: |
           gcc -std=c11 -Wall -Wextra -Werror \
@@ -65,3 +73,4 @@ jobs:
           sudo apt-get install -y lua5.4
           luac5.4 -p "$RUNNER_TEMP/mc2sm64-output/lua"/*.lua
           luac5.4 -p "$RUNNER_TEMP/mc2sm64-import/generated/lua"/*.lua
+          luac5.4 -p "$RUNNER_TEMP/minecraft-block-fixture"/*.lua
