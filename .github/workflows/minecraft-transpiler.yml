@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - android
+      - minecraft-reverse-pipeline-alpha
+      - stevecraft-independent-player-alpha
       - stevecraft-native-integration-alpha
       - minecraft-reverse-pipeline-alpha
     paths:
