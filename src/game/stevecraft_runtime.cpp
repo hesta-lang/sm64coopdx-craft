@@ -9,6 +9,8 @@
 #include "game/first_person_cam.h"
 #include "game/mario.h"
 #include "engine/surface_collision.h"
+#include "engine/math_util.h"
+#include "pc/djui/djui.h"
 #include "pc/lua/utils/smlua_camera_utils.h"
 #include "pc/controller/controller_mouse.h"
 
