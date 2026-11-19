@@ -1,6 +1,6 @@
 # mc2sm64 — Minecraft Java source transpiler (alpha)
 
-`mc2sm64` is the first tooling layer for SteveCraft's reverse-engineering pipeline. It imports `.java` sources, parses them with Tree-sitter, writes a language-neutral IR JSON file, and emits a conservative subset to SM64CoopDX Lua modules and native C helper functions.
+`mc2sm64` is the source-to-source compiler inside SteveCraft's reverse-engineering pipeline. `import_minecraft.py` accepts Java source directories/files/source JARs and can invoke a user-supplied CFR decompiler for a local bytecode JAR. The compiler parses Java with Tree-sitter, writes language-neutral IR JSON, and emits a conservative subset to SM64CoopDX Lua modules and native C helper functions.
 
 ## Important boundary
 
@@ -22,8 +22,36 @@ Python 3.10+.
 python -m pip install -r tools/minecraft_transpiler/requirements.txt
 ```
 
-## Run from the repository root
+## Import Minecraft source from a local JAR
 
+A normal Minecraft client JAR contains `.class` bytecode, not `.java` source. To inspect that code, obtain the exact-version JAR through your own legitimate Minecraft installation and provide a local CFR decompiler JAR. The importer does not download the game, authenticate to Microsoft, or redistribute the input.
+
+```sh
+python tools/minecraft_transpiler/import_minecraft.py \
+  --input /path/to/minecraft-client.jar \
+  --cfr-jar /path/to/cfr.jar \
+  --include-package net.minecraft.world.entity \
+  --include-package net.minecraft.world.phys \
+  --out build/minecraft-physics \
+  --target lua
+```
+
+For Java source already available (including a source JAR), omit `--cfr-jar`:
+
+```sh
+python tools/minecraft_transpiler/import_minecraft.py \
+  --input /path/to/mapped-java-sources \
+  --out build/minecraft-source \
+  --target both
+```
+
+The importer writes `import_report.json` with source inventory, SHA-256 hashes, package filters, whether CFR was used, and the transpilation report. Use `--max-sources` to cap imported files. Repeat `--include-package` to select multiple package prefixes.
+
+**CFR is a decompiler, not the original source.** It reconstructs approximate Java from bytecode. It cannot recover original comments, formatting, or every source-level construct. Decompiled output must be checked against the target Minecraft version and mappings.
+
+On Android, this can run in Termux with Python, a Java runtime, the Python requirements, and a CFR JAR stored locally. It can also run in GitHub Actions when the JARs are supplied through a secure, user-controlled input workflow; do not commit Minecraft client JARs or CFR binaries to this public repository.
+
+## Run from the repository root
 ```sh
 python tools/minecraft_transpiler/mc2sm64.py \
   --input tools/minecraft_transpiler/examples/java \
@@ -87,8 +115,9 @@ Use source code and mappings for the exact Minecraft version being researched. T
 
 ## Next engineering milestones
 
-1. Add a versioned Minecraft mapping/source adapter and symbol-resolution database.
+1. Add version-specific Mojang mappings and resolve intermediary/official names before translation.
 2. Extend the IR for fields, constructors, object state, vectors, and the selected entity/component model.
-3. Define an explicit SM64CoopDX runtime adapter for MarioState, camera, collision surfaces, objects, and tick timing.
-4. Port one isolated system at a time and compare it against reference behavior in Minecraft.
-5. Add generated-code and in-game parity tests before calling a subsystem ported.
+3. Add semantic adapters for Minecraft registries, entities, world/chunk access, and tick timing.
+4. Define explicit SM64CoopDX runtime bindings for MarioState, camera, collision surfaces, objects, and networking.
+5. Port one isolated system at a time and compare it against reference behavior in Minecraft.
+6. Add generated-code, runtime, and in-game parity tests before calling a subsystem ported.
