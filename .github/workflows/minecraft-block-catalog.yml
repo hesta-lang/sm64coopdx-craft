@@ -8,6 +8,13 @@ on:
         required: true
         default: '26.3'
         type: string
+  push:
+    branches:
+      - minecraft-reverse-pipeline-alpha
+    paths:
+      - 'tools/minecraft_transpiler/extract_block_states.py'
+      - 'tools/minecraft_transpiler/download_server_jar.py'
+      - '.github/workflows/minecraft-block-catalog.yml'
 
 permissions:
   contents: read
@@ -33,7 +40,7 @@ jobs:
 
       - name: Validate version input
         env:
-          MC_VERSION: ${{ inputs.minecraft_version }}
+          MC_VERSION: ${{ inputs.minecraft_version || '26.3' }}
         run: |
           if [[ ! "$MC_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?(-[A-Za-z0-9.-]+)?$ ]]; then
             echo "Invalid Minecraft version: $MC_VERSION" >&2
@@ -42,7 +49,7 @@ jobs:
 
       - name: Download official server JAR and verify SHA-1
         env:
-          MC_VERSION: ${{ inputs.minecraft_version }}
+          MC_VERSION: ${{ inputs.minecraft_version || '26.3' }}
         run: |
           python tools/minecraft_transpiler/download_server_jar.py \
             --version "$MC_VERSION" \
@@ -59,7 +66,7 @@ jobs:
 
       - name: Extract all block states and redstone candidates
         env:
-          MC_VERSION: ${{ inputs.minecraft_version }}
+          MC_VERSION: ${{ inputs.minecraft_version || '26.3' }}
         run: |
           python tools/minecraft_transpiler/extract_block_states.py \
             --input "$RUNNER_TEMP/minecraft-generated/reports/blocks.json" \
@@ -76,7 +83,7 @@ jobs:
       - name: Publish catalogs as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: stevecraft-block-catalog-${{ inputs.minecraft_version }}
+          name: stevecraft-block-catalog-${{ inputs.minecraft_version || '26.3' }}
           path: |
             ${{ runner.temp }}/stevecraft-block-catalog/
             ${{ runner.temp }}/minecraft-generated/reports/blocks.json
