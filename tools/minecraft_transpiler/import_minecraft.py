@@ -20,7 +20,7 @@ from typing import Iterable
 
 from mc2sm64 import transpile
 
-PACKAGE_RE = re.compile(rb"^\\s*package\\s+([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*)\\s*;", re.MULTILINE)
+PACKAGE_RE = re.compile(rb"^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;", re.MULTILINE)
 
 
 def safe_archive_sources(archive_path: Path, destination: Path) -> int:
@@ -164,7 +164,7 @@ def import_and_transpile(input_path: Path, output_path: Path, target: str,
             ),
         }
         (output_path / "import_report.json").write_text(
-            json.dumps(import_report, indent=2, ensure_ascii=False) + "\\n",
+            json.dumps(import_report, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         return import_report
