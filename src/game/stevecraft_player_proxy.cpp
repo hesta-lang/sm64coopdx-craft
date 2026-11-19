@@ -63,17 +63,11 @@ void snapshot_object(struct MarioState *m) {
         return;
     }
 
-    if (sSnapshottedObject) {
-        sSnapshottedObject->header.gfx.node.flags =
-            static_cast<s16>((sSnapshottedObject->header.gfx.node.flags & ~GRAPH_RENDER_INVISIBLE)
-                | (sOriginalInvisible ? GRAPH_RENDER_INVISIBLE : 0));
-        sSnapshottedObject->hitboxRadius = sOriginalHitboxRadius;
-        sSnapshottedObject->hitboxHeight = sOriginalHitboxHeight;
-        sSnapshottedObject->hurtboxRadius = sOriginalHurtboxRadius;
-        sSnapshottedObject->hurtboxHeight = sOriginalHurtboxHeight;
-        sSnapshottedObject->hitboxDownOffset = sOriginalHitboxDownOffset;
-    }
-
+    /*
+     * Mario objects can be replaced during a level/area transition. Do not
+     * dereference the previous pointer here: it may already belong to a
+     * recycled object-pool slot. The old area owns its cleanup.
+     */
     sSnapshottedObject = m->marioObj;
     sOriginalInvisible = (sSnapshottedObject->header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) != 0;
     sOriginalHitboxRadius = sSnapshottedObject->hitboxRadius;
@@ -83,8 +77,14 @@ void snapshot_object(struct MarioState *m) {
     sOriginalHitboxDownOffset = sSnapshottedObject->hitboxDownOffset;
 }
 
-void restore_object(void) {
+void restore_object(struct MarioState *m) {
     if (!sSnapshottedObject) {
+        return;
+    }
+
+    /* Only restore the object while it is still the current local Mario. */
+    if (!m || m->playerIndex != 0 || m->marioObj != sSnapshottedObject) {
+        sSnapshottedObject = nullptr;
         return;
     }
 
@@ -259,11 +259,14 @@ extern "C" void stevecraft_player_proxy_capture_engine_state(struct MarioState *
 }
 
 extern "C" void stevecraft_player_proxy_update_mario(struct MarioState *m) {
-    if (!sProxyEnabled) {
-        restore_object();
+    if (!m || m->playerIndex != 0) {
         return;
     }
-    if (!m || m->playerIndex != 0 || !m->marioObj) {
+    if (!sProxyEnabled) {
+        restore_object(m);
+        return;
+    }
+    if (!m->marioObj) {
         return;
     }
 
