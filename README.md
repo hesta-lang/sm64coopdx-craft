@@ -27,3 +27,22 @@ The wiki is made using GitHub's wiki feature, you can go to the wiki tab or clic
 
 ## Community
 We have an official Discord server open to the public [here](https://discord.gg/TJVKHS4).
+
+## SteveCraft Minecraft reverse-engineering tools
+
+This repository includes an experimental Python pipeline under [`tools/minecraft_transpiler`](tools/minecraft_transpiler/README.md). It imports Java source or a local Minecraft bytecode JAR (using a user-supplied CFR decompiler), builds a language-neutral intermediate representation, and conservatively generates SM64CoopDX Lua modules or native C helpers.
+
+The pipeline is **alpha tooling, not a complete Minecraft port**. Unsupported Java constructs and unknown Minecraft APIs are reported instead of being silently approximated. Lua output still needs an explicit SM64CoopDX gameplay adapter and runtime parity tests. A local Minecraft JAR and CFR binary must not be committed to this public repository.
+
+Run the importer from the repository root:
+
+```sh
+python -m pip install -r tools/minecraft_transpiler/requirements.txt
+python tools/minecraft_transpiler/import_minecraft.py \
+  --input /path/to/minecraft-client.jar \
+  --cfr-jar /path/to/cfr.jar \
+  --include-package net.minecraft.world.entity \
+  --out build/stevecraft-import \
+  --target lua
+```
+
