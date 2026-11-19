@@ -31,6 +31,7 @@ struct PlayerModelState {
     Vec3f originalScale = { 1.0f, 1.0f, 1.0f };
     Vec3f modelScale = { 1.0f, 1.0f, 1.0f };
     bool hasOriginalState = false;
+    bool originalPlayerRenderFlag = false;
     bool enabled = false;
     bool scaleConfigured = false;
     bool scaleApplied = false;
@@ -55,6 +56,8 @@ void capture_original_state(PlayerModelState &state, Object *object) {
      * dereference the previous object while switching to the new one. */
     state.object = object;
     state.originalGeo = object->header.gfx.sharedChild;
+    state.originalPlayerRenderFlag =
+        (object->header.gfx.node.flags & GRAPH_RENDER_PLAYER) != 0;
     for (s32 axis = 0; axis < 3; ++axis) {
         state.originalScale[axis] = object->header.gfx.scale[axis];
     }
@@ -200,6 +203,13 @@ extern "C" void stevecraft_player_model_update_mario(struct MarioState *m) {
                 object->header.gfx.scale[axis] = state->originalScale[axis];
             }
         }
+        if (state->hasOriginalState) {
+            if (state->originalPlayerRenderFlag) {
+                object->header.gfx.node.flags |= GRAPH_RENDER_PLAYER;
+            } else {
+                object->header.gfx.node.flags &= ~GRAPH_RENDER_PLAYER;
+            }
+        }
         if (!state->appliedAnimationName.empty()
             && smlua_anim_util_get_current_animation_name(object) != nullptr) {
             object->header.gfx.animInfo.curAnim = nullptr;
@@ -252,6 +262,10 @@ extern "C" void stevecraft_player_model_update_mario(struct MarioState *m) {
 
     /* When proxy mode is active, the selected custom GeoLayout replaces the
      * otherwise hidden Mario mesh. Normal players keep their original flags. */
+    /* The renderer uses this flag to collect player-specific bone data
+     * (such as minimumBoneY) from the independent GeoLayout. */
+    object->header.gfx.node.flags |= GRAPH_RENDER_PLAYER;
+
     if (m->playerIndex == 0 && stevecraft_player_proxy_is_enabled()) {
         object->header.gfx.node.flags &= ~GRAPH_RENDER_INVISIBLE;
     }
