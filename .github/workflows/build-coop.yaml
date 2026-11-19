@@ -273,7 +273,7 @@ jobs:
                 roots = ("actors", "levels", "src", "bin", "data", "assets", "sound", "include")
                 source_suffixes = {".c", ".h", ".cpp"}
                 include_pattern = re.compile(
-                    r'^\s*#\s*include\s*"([^"]+\\.inc\\.c)"',
+                    r'^\s*#\s*include\s*"([^"]+\.inc\.c)"',
                     re.MULTILINE,
                 )
                 targets = set()
