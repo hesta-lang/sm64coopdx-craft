@@ -109,7 +109,8 @@ extern "C" s32 stevecraft_player_model_set_model(s32 playerIndex, s32 extendedMo
 
     state->modelGeo = modelGeo;
     state->enabled = true;
-    state->animationName.clear();
+    /* Keep the selected named animation when switching between model
+     * profiles; the update path will restart it against the new GeoLayout. */
     state->appliedAnimationName.clear();
     state->animationAttempted = false;
     return 1;
@@ -210,10 +211,15 @@ extern "C" void stevecraft_player_model_update_mario(struct MarioState *m) {
                 object->header.gfx.node.flags &= ~GRAPH_RENDER_PLAYER;
             }
         }
-        if (!state->appliedAnimationName.empty()
-            && smlua_anim_util_get_current_animation_name(object) != nullptr) {
-            object->header.gfx.animInfo.curAnim = nullptr;
-            object->header.gfx.animInfo.animID = -1;
+        if (!state->appliedAnimationName.empty() && m->animation
+            && m->animation->targetAnim) {
+            /* The renderer dereferences curAnim while preparing animation
+             * globals. Restore a valid engine animation instead of nulling
+             * the pointer when the independent rig is removed. */
+            object->header.gfx.animInfo.curAnim = m->animation->targetAnim;
+            reset_animation_to_start(object);
+        }
+        if (!state->appliedAnimationName.empty()) {
             object->header.gfx.animInfo.prevAnimPtr = nullptr;
         }
         state->appliedGeo = nullptr;
@@ -244,9 +250,16 @@ extern "C" void stevecraft_player_model_update_mario(struct MarioState *m) {
         const bool isCurrent = currentName
             && std::strcmp(currentName, state->animationName.c_str()) == 0;
 
-        /* Rebind after the vanilla action changes its animation ID. If the
-         * named animation was found, restart it at its own first frame. */
-        if (!isCurrent && (!state->animationAttempted || !state->appliedAnimationName.empty())) {
+        if (isCurrent) {
+            /* First application or model switch: start the named animation
+             * on this model's own rig without disturbing Mario's action ID. */
+            if (state->appliedAnimationName != state->animationName) {
+                reset_animation_to_start(object);
+                state->appliedAnimationName = state->animationName;
+            }
+            state->animationAttempted = false;
+        } else if (!state->animationAttempted || !state->appliedAnimationName.empty()) {
+            /* Rebind after the vanilla action changes its animation ID. */
             smlua_anim_util_set_animation(object, state->animationName.c_str());
             currentName = smlua_anim_util_get_current_animation_name(object);
 
