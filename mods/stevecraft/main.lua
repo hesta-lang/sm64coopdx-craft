@@ -256,13 +256,20 @@ local function stevecraft_physics(m, stepType, stepArg)
         state.velocity.z = state.velocity.z * friction
     end
 
+    local actionIsAir = (m.action & ACT_FLAG_AIR) ~= 0
     if wasGrounded and (m.controller.buttonPressed & A_BUTTON) ~= 0 then
         state.velocity.y = STEVE_JUMP_SPEED
         state.onGround = false
-        if (m.action & ACT_FLAG_AIR) == 0 then
+        if not actionIsAir then
             set_mario_action(m, ACT_JUMP, 0)
         end
-    elseif not wasGrounded then
+    elseif actionIsAir then
+        -- Mario's action handler may have consumed A_BUTTON before this hook.
+        -- Preserve its initial jump impulse when Steve takes over the step.
+        if wasGrounded then
+            state.velocity.y = math.max(m.vel.y, 0.0)
+        end
+        state.onGround = false
         state.velocity.y = math.max(state.velocity.y - STEVE_GRAVITY, STEVE_TERMINAL_VELOCITY)
     else
         state.velocity.y = 0.0
