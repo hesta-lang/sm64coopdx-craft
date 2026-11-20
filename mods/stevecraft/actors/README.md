@@ -5,8 +5,8 @@ is ready.
 
 Expected entry asset:
 
-- \`steve_geo.bin\` — DynOS GeoLayout/model binary referenced by
-  \`smlua_model_util_get_id("steve_geo")\`.
+- `steve_geo.bin` — DynOS GeoLayout/model binary referenced by
+  `smlua_model_util_get_id("steve_geo")`.
 
 The binary must reference its converted texture and animation data in the
 format supported by the SM64CoopDX DynOS loader. Do not replace this with a
