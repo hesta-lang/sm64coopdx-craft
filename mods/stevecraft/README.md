@@ -21,9 +21,9 @@ SM64CoopDX.
 ## Required model asset
 
 The model is not included in this alpha. Add a valid DynOS actor GeoLayout
-named \`steve_geo\` at:
+named `steve_geo` at:
 
-\`actors/steve_geo.bin\`
+`actors/steve_geo.bin`
 
 The actor must be built for the SM64CoopDX DynOS model loader. Mario remains
 visible and vanilla physics remains active when the model cannot be loaded,
@@ -36,7 +36,7 @@ be imported and validated before this mod can display Steve.
 ## Current scope
 
 Included:
-- normal Lua mod entry point (\`main.lua\`);
+- normal Lua mod entry point (`main.lua`);
 - a separate Steve position/velocity state and initial controller;
 - ground/air step interception through the public Lua hook;
 - SM64 wall/floor queries for the proxy collision layer;
