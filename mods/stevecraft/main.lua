@@ -149,6 +149,7 @@ local function stevecraft_object_unloaded(object)
     for _, state in pairs(sPlayers) do
         if state.visual == object then
             state.visual = nil
+            restore_mario_proxy(state)
         end
         if state.proxyObject == object then
             state.proxyObject = nil
