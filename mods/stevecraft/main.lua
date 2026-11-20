@@ -19,7 +19,7 @@ local STEVE_TERMINAL_VELOCITY = -75.0
 local STEVE_WALL_RADIUS = 24.0
 local STEVE_WALL_LOWER_OFFSET = 30.0
 local STEVE_WALL_UPPER_OFFSET = 60.0
-local STEVE_STEP_HEIGHT = 20.0
+local STEVE_STEP_HEIGHT = 53.0
 
 local sModelId = nil
 local sModelLoadAttempted = false
@@ -233,7 +233,10 @@ local function stevecraft_physics(m, stepType, stepArg)
     -- Some Mario actions can request more than one physics pass in a frame.
     -- Steve integrates once; repeated calls reuse the previous result.
     if state.lastPhysicsFrame == gGlobalTimer then
-        return state.lastStepResult
+        if state.lastStepType == stepType then
+            return state.lastStepResult
+        end
+        return stepType == STEP_TYPE_AIR and AIR_STEP_NONE or GROUND_STEP_NONE
     end
     state.lastPhysicsFrame = gGlobalTimer
 
@@ -327,6 +330,18 @@ local function stevecraft_physics(m, stepType, stepArg)
     return result
 end
 
+
+local function read_steve_state_from_proxy(m, state)
+    state.position.x = m.pos.x
+    state.position.y = m.pos.y
+    state.position.z = m.pos.z
+    state.velocity.x = m.vel.x
+    state.velocity.y = m.vel.y
+    state.velocity.z = m.vel.z
+    state.yaw = m.faceAngle.y
+    state.onGround = m.floor ~= nil and m.pos.y <= m.floorHeight + 2.0
+end
+
 local function stevecraft_update_player(m)
     if m == nil or m.playerIndex ~= 0 or m.marioObj == nil then
         return
@@ -339,6 +354,12 @@ local function stevecraft_update_player(m)
 
     local state = get_player_state(m.playerIndex)
     initialize_steve_state(m, state)
+    if state.lastPhysicsFrame ~= gGlobalTimer then
+        -- Water, hang, freeze and special-action steps are left to SM64.
+        -- Copy their resulting transform back into Steve instead of allowing
+        -- the independent controller to drift away from its Mario proxy.
+        read_steve_state_from_proxy(m, state)
+    end
 
     local visual = spawn_steve_visual(m, state, modelId)
     if visual == nil then
