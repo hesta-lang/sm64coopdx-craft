@@ -1,0 +1,42 @@
+name: Package SteveCraft Mod
+
+on:
+  push:
+    branches:
+      - stevecraft-normal-mod-alpha
+    paths:
+      - "mods/stevecraft/**"
+      - ".github/workflows/package-stevecraft-mod.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-mod:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Lua syntax checker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4 zip
+
+      - name: Validate mod Lua
+        run: |
+          luac5.4 -p mods/stevecraft/main.lua
+
+      - name: Package standalone mod
+        run: |
+          cd mods/stevecraft
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.1.0-alpha.zip" main.lua README.md actors/README.md
+
+      - name: Upload standalone mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteveCraft-0.1.0-alpha
+          path: SteveCraft-0.1.0-alpha.zip
+          if-no-files-found: error
+          retention-days: 14
