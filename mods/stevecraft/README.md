@@ -1,57 +1,49 @@
 # SteveCraft — standalone mod (alpha)
 
 SteveCraft is packaged as a normal SM64CoopDX mod. It does not patch the
-Android APK, add native code to the game executable, or require rebuilding
-SM64CoopDX.
+Android APK or add native code to the game executable.
 
 ## Player architecture
 
 - Steve has an independent Lua player state, controller and rendered object.
-- Mario remains the engine's player/proxy identity so existing systems can
-  recognize a normal player for interactions, damage, collision, networking
-  and moving platforms.
-- Steve's controller owns its position and velocity during supported ground
-  and air steps, then mirrors that state into MarioState and Mario's collision
-  object. Mario is the compatibility proxy, not a second movement authority.
-- SM64's collision queries are reused as the initial compatibility layer.
-- The proxy is hidden only after the separate Steve model object exists.
-- Unsupported special steps (for example water/hanging states) temporarily
-  remain under SM64 control and are copied back into Steve's state.
+- Mario remains the engine's player/proxy identity for interactions, damage,
+  collision, networking and moving platforms.
+- Steve's controller owns position and velocity during the supported ground
+  and air steps, then mirrors that state into MarioState. Mario is the engine
+  compatibility proxy, not a second movement authority.
+- The mod hides Mario only after the separate Steve model object exists.
+- DynOS compiles the included actor source into the custom Steve model when
+  the mod is loaded.
 
-## Required model asset
+## Model assets
 
-The model is not included in this alpha. Add a valid DynOS actor GeoLayout
-named `steve_geo` at:
+This alpha includes the classic Steve model geometry and 64x64 skin source
+from Mojang's bedrock-samples humanoid model. The conversion preserves the
+8x8 head, 8x12x4 torso, classic 4-pixel arms and legs, and the second skin
+layer (hat, jacket, sleeves and pants), with their UV coordinates.
 
-`actors/steve_geo.bin`
+The generator in tools creates:
+- actors/steve/geo.inc.c — articulated GeoLayout for body, head, arms and legs;
+- actors/steve/model.inc.c — textured cube meshes and display lists;
+- actors/steve/texture.inc.c — the two skin atlas textures;
+- two 64x32 PNG atlas halves. Each RGBA16 half occupies at most 4 KiB.
 
-The actor must be built for the SM64CoopDX DynOS model loader. Mario remains
-visible and vanilla physics remains active when the model cannot be loaded,
-preventing a blank/invisible or uncontrollable player.
+The actor source is generated from source/humanoid.custom.geo.json and
+source/steve.png. On mod load, SM64CoopDX's DynOS mod-pack generation step
+converts those sources into the steve_geo actor binary. The Lua mod then
+loads it through smlua_model_util_get_id.
 
-The current repository does not yet contain a converted Minecraft Steve
-GeoLayout, its exact UV/textures, or Steve's animation set. Those assets must
-be imported and validated before this mod can display Steve.
+## Limits
 
-## Current scope
+- The GeoLayout preserves separate head, arm and leg joints, but custom
+  Minecraft animation clips have not been imported yet.
+- The controller is experimental; full Minecraft parity for water, ceilings,
+  ladders, knockback, riding and special movement is not complete.
+- The Minecraft first-/third-person camera and touch-look behavior are not
+  included yet.
+- The model and Lua controller still require an in-game visual/physics test.
+  CI checks source generation, Lua syntax and ZIP packaging; it does not
+  certify in-game rendering or physics.
 
-Included:
-- normal Lua mod entry point (`main.lua`);
-- a separate Steve position/velocity state and initial controller;
-- ground/air step interception through the public Lua hook;
-- SM64 wall/floor queries for the proxy collision layer;
-- separate Steve render-object lifecycle and transform attachment;
-- Mario proxy visibility management and cleanup;
-- standalone ZIP packaging workflow.
-
-Still incomplete:
-- exact Minecraft movement constants and full parity with Minecraft physics;
-- ceiling, water, swimming, ladders, knockback, riding and all special actions;
-- Minecraft first-/third-person camera and touch-look behavior;
-- imported Steve mesh, skin UVs, textures and animations;
-- full multiplayer proxy synchronization.
-
-The controller is an experimental first pass. Its packaging and Lua syntax are
-checked in CI, but the in-game movement and collision behavior still require
-testing with the real DynOS Steve model before it should be treated as a
-playable release.
+The PR remains draft until the model, collision bridge and controller have
+been tested in SM64CoopDX.

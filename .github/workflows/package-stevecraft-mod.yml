@@ -20,19 +20,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Lua syntax checker
+      - name: Install model and Lua build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y lua5.4 zip
+          sudo apt-get install -y lua5.4 zip python3-pil
+
+      - name: Generate Steve DynOS actor
+        run: |
+          python3 mods/stevecraft/tools/generate_dynos_actor.py
+          test -s mods/stevecraft/actors/steve/geo.inc.c
+          test -s mods/stevecraft/actors/steve/model.inc.c
+          test -s mods/stevecraft/actors/steve/texture.inc.c
+
+      - name: Validate source assets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root = Path("mods/stevecraft/actors/steve")
+          assert "const GeoLayout steve_geo" in (root / "geo.inc.c").read_text()
+          assert "GEO_ANIMATED_PART" in (root / "geo.inc.c").read_text()
+          model = (root / "model.inc.c").read_text()
+          for part in ("head", "body", "left_arm", "right_arm", "left_leg", "right_leg"):
+              assert f"steve_{part}_base_dl" in model, part
+          for texture in ("steve_skin_upper.rgba16.png", "steve_skin_lower.rgba16.png"):
+              image = Image.open(root / texture)
+              assert image.size == (64, 32), (texture, image.size)
+          print("Steve model geometry, body joints and 64x32 skin tiles validated.")
+          PY
 
       - name: Validate mod Lua
-        run: |
-          luac5.4 -p mods/stevecraft/main.lua
+        run: luac5.4 -p mods/stevecraft/main.lua
 
       - name: Package standalone mod
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.1.0-alpha.zip" main.lua README.md actors
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.1.0-alpha.zip" main.lua README.md actors source tools
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4

@@ -1,14 +1,17 @@
-# Steve DynOS actor assets
+# Steve DynOS actor
 
-This directory must contain the converted Steve actor when the model pipeline
-is ready.
+The classic Steve actor is generated from the Mojang humanoid geometry JSON and
+the official 64x64 Steve skin retained in source/.
 
-Expected entry asset:
+Run:
 
-- `steve_geo.bin` — DynOS GeoLayout/model binary referenced by
-  `smlua_model_util_get_id("steve_geo")`.
+    python3 tools/generate_dynos_actor.py
 
-The binary must reference its converted texture and animation data in the
-format supported by the SM64CoopDX DynOS loader. Do not replace this with a
-placeholder cube model: the goal is to import the Minecraft player geometry,
-UV layout and skin accurately.
+This writes the DynOS sources into actors/steve/. The package workflow runs
+the same generator before creating the mod ZIP. When SM64CoopDX loads the mod,
+its DynOS mod-pack path converts texture.inc.c, model.inc.c and geo.inc.c into
+the steve_geo actor binary.
+
+The base and outer skin layers are split between opaque and alpha GeoLayout
+layers. Head, arms and legs remain separate animated GeoLayout parts. Custom
+animation clips are not part of this initial model import.
