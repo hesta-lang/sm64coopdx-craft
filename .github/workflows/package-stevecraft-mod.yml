@@ -3,6 +3,7 @@ name: Package SteveCraft Mod
 on:
   push:
     branches:
+      - android
       - stevecraft-normal-mod-alpha
     paths:
       - "mods/stevecraft/**"
