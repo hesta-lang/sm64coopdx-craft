@@ -1,5 +1,55 @@
 -- Mod asset installer: copies extracted Minecraft Java files into SteveCraft ModFS.
 local M = {}
+local active_modfs = nil
+
+local function resolve_modfs()
+    if active_modfs ~= nil and type(active_modfs.modPath) == "string" then
+        return active_modfs
+    end
+    if type(mod_fs_get) ~= "function" then
+        return nil, "SM64CoopDX ModFS API is unavailable"
+    end
+    local ok, modfs = pcall(mod_fs_get)
+    if ok and modfs == nil and type(mod_fs_create) == "function" then
+        ok, modfs = pcall(mod_fs_create)
+    end
+    if not ok or type(modfs) ~= "table"
+        or type(modfs.modPath) ~= "string" or modfs.modPath == "" then
+        return nil, "could not obtain the active mod filesystem"
+    end
+    active_modfs = modfs
+    return modfs
+end
+
+function M.get_uri(path)
+    if type(path) ~= "string" or path == "" then return nil end
+    local modfs = resolve_modfs()
+    if modfs == nil or type(MOD_FS_URI_FORMAT) ~= "string" then return nil end
+    local relative = path:gsub("\\\\", "/"):gsub("^/+", "")
+    if relative:sub(1, 7) ~= "assets/" then
+        relative = "assets/" .. relative
+    end
+    return string.format(MOD_FS_URI_FORMAT, modfs.modPath, relative)
+end
+
+function M.import_all(root)
+    local modfs, err = resolve_modfs()
+    if modfs == nil then
+        print("[SteveCraft] WARNING: asset import skipped: " .. tostring(err))
+        return false, err
+    end
+    root = root or "mods/stevecraft/"
+    local ok, result = M.install(root, modfs)
+    if not ok then
+        local failures = type(result) == "table" and result.failures or nil
+        local first = failures and failures[1] or "unknown asset import error"
+        print("[SteveCraft] WARNING: some assets could not be imported: " .. tostring(first))
+    else
+        print("[SteveCraft] Imported " .. tostring(result.installed or 0)
+            .. " assets; reused " .. tostring(result.skipped or 0) .. ".")
+    end
+    return ok, result
+end
 local required = {
     "textures/gui/sprites/hud/hotbar.png",
     "textures/gui/sprites/hud/hotbar_selection.png",
@@ -55,6 +105,7 @@ function M.install(root, modfs)
     if type(root) ~= "string" or type(modfs) ~= "table" then
         return false, "missing mod root or ModFS"
     end
+    active_modfs = modfs
     local installed, skipped, failures = 0, 0, {}
     for _, relative in ipairs(required) do
         local data, err = file_bytes(root .. "assets/" .. relative)
