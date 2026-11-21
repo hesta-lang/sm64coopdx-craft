@@ -1,118 +1,122 @@
-# SteveCraft 0.3.0-alpha — Steve proxy, block grid, and inventory prototype
+# SteveCraft 0.4.1-alpha — Steve proxy, first-person prototype, and voxel build system
 
-SteveCraft is an independent Lua mod for SM64CoopDX. It is packaged as a
+SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
 
-## Player and model
+## Player and model registration
 
-- Keeps Mario as the single engine/physics proxy through the existing
-  m.marioObj; it does not spawn a second player actor.
-- Preserves the original DynOS actor at
-  mods/stevecraft/actors/minecraft_steve_geo.bin. The file is not regenerated.
-- Resolves the internal GeoLayout symbol mario_geo through
-  smlua_model_util_get_id() and assigns it using obj_set_model_extended().
-- Retains native SM64CoopDX gravity, movement, camera, and player collision.
-  Full Minecraft Java player physics is not implemented yet.
-- Generates 24-frame idle and walking animation loops using Lua trigonometric
-  functions and the model's 20 audited animated-part channels.
+- Mario remains the single engine/player object through the existing
+  `m.marioObj`; Steve is not spawned as a second player actor.
+- The supplied `actors/minecraft_steve_geo.bin` remains byte-for-byte unchanged.
+- The DYNOSBIN is embedded in `main.lua` and imported into the active mod's
+  ModFS on first launch. The mod saves it as
+  `actors/minecraft_steve_geo.bin` and resolves it through the exact
+  `modfs:/<modPath>/actors/minecraft_steve_geo.bin` URI.
+- This avoids a dangerous fallback: looking up the internal symbol
+  `mario_geo` by itself can resolve the built-in Mario actor when the custom
+  actor has not been registered.
+- If ModFS or DynOS registration is temporarily unavailable, the loader
+  retries rather than permanently caching the first failed lookup.
+- Idle and walk animation channels are still generated for the 20 audited
+  animated-part channels.
 
 Original actor SHA-256:
 
-773446e965b4123f032faf1948528a5b1541d4ca7b3fae9fe8220ce0769fcad1
+`773446e965b4123f032faf1948528a5b1541d4ca7b3fae9fe8220ce0769fcad1`
 
-## Invisible per-map construction grid
+## First-person camera and targeting
 
-Each save slot, level, and area gets its own grid, anchored to world origin.
-The grid itself is invisible; a placed block occupies one integer cell. Grid
-coordinates are converted into SM64 world coordinates using 90 game units per
-cell.
+- Enables SM64CoopDX's native first-person camera API.
+- Renders a centered Minecraft-style crosshair while first person is active.
+- Uses the camera's actual position/yaw/pitch to construct the crosshair ray.
+- Uses a voxel DDA traversal for SteveCraft's dynamic block grid. If the ray
+  hits a placed block, the adjacent cell is used for placement and the hit cell
+  is used for mining/removal.
+- If first person is unavailable or disabled by an engine camera cancel, the
+  placement code falls back to Mario's facing direction.
 
-- Maximum 128 placed blocks per area in this prototype.
-- Occupied cells cannot be overwritten.
-- Each placed block is spawned as an SM64CoopDX surface object.
-- The object loads its collision every update using
-  load_object_collision_model(). Removing a block deactivates that object,
-  which removes its dynamic collision.
-- Grid records are persisted with the mod's own storage, split into chunks
-  shorter than its per-key value limit.
-- Returning to the same save slot/level/area reconstructs the saved blocks.
-  Switching areas deactivates the old area's block objects.
+The camera code and ray math are unit-tested. CI does not emulate Android's
+touch controls or verify the rendered camera image.
 
-### Current controls
+## Hearts, hunger, armor, and damage
 
-Hold **L** to enter build controls:
+- The heart row is derived from the local `MarioState.health` value and maps
+  Mario's health range to 20 half-heart units.
+- A decrease in Mario health triggers the SM64CoopDX hit-camera shake API.
+- Hunger and armor icons are currently visual placeholders. There is no
+  Minecraft food depletion, armor inventory, damage absorption, regeneration,
+  or hunger-driven health logic yet.
+
+## Inventory and construction
+
+The system has a nine-slot hotbar with 64 starter items per slot. Inventory and
+the current selection persist per save slot.
+
+Controls while holding **L**:
 
 | Input | Action |
 |---|---|
 | L + D-pad Left / Right | Select hotbar slot |
 | L + D-pad Up / Down | Raise / lower construction layer |
-| L + A | Place the selected block in the cell in front of Steve |
-| L + B | Remove the block in the target cell |
+| L + A | Place the selected block at the crosshair target |
+| Hold L + B | Mine the targeted placed block |
 
-Placement currently uses Steve's facing direction and a fixed forward distance,
-not a camera raycast. Vertical placement uses the selected layer offset.
+The grid is per save slot, level, and area. It uses 90 SM64 world units per
+cell, a maximum of 128 blocks per area, chunked Mod Storage records, and
+dynamic surface objects that load collision through
+`load_object_collision_model()`.
 
-## Inventory and starter blocks
+### Current block limitations
 
-The HUD shows a 9-slot hotbar. Each slot starts with 64 units, creating a
-creative-mode-style starter inventory. The selected slot and stack counts are
-saved per mod save slot. Breaking a block returns one item to its matching
-stack or an empty slot. A block is not removed when the inventory has no room
-for the returned item.
+- All nine starter block IDs still use the vanilla breakable-box display model
+  and full-cube collision mesh. They do not yet render the corresponding
+  Minecraft Java voxel model or texture.
+- The catalogue includes Java 26.3 destroy speed, explosion resistance,
+  friction, and sound-event IDs. Mining time uses a simple prototype scaling
+  based on destroy speed; tool tiers and Java's complete breaking-speed
+  formula are not implemented.
+- Sound-event IDs are metadata only. Minecraft audio is not yet loaded or
+  played.
+- Friction metadata is not yet connected to Mario movement.
+- Block-state variants, slabs, stairs, fluids, redstone, crafting and mining
+  drops are not implemented.
 
-The initial catalogue contains nine Minecraft Java 26.3 block IDs:
+## First-person hand and custom skins
 
-- Stone
-- Dirt
-- Grass block
-- Oak planks
-- Cobblestone
-- Glass
-- Bricks
-- Sand
-- Bedrock
+The crosshair and camera ray are implemented, but a separate first-person
+hand is **not included**. A read-only audit of the supplied actor found zero
+GeoLayouts named `mario_geo_right_hand`; asking DynOS for that name would risk
+falling back to Mario's built-in hand. This version deliberately does not do
+that. The correct next step is to extract the hand mesh subtree from the
+existing actor binary or add a compatible actor asset that actually contains
+a standalone hand layout.
 
-Destroy speed, explosion resistance, friction, and sound-event IDs for this
-starter catalogue were transcribed from the validated Java 26.3 runtime-registry
-artifact. Bedrock has destroy speed -1 and cannot be removed through this
-prototype.
-
-## Collision and rendering limits
-
-The current visual and collision prototype uses SM64CoopDX's vanilla breakable
-box model and collision mesh, scaled to the grid cell. This proves the object
-spawn, persistence, and dynamic surface-collision path, but it does **not**
-render the actual Minecraft block textures or per-block model geometry yet.
-At this stage the nine starter blocks all use a full-cube collision and the
-same placeholder appearance. Their Java-specific friction and sound IDs are
-catalogue data only; different movement friction and Minecraft audio playback
-have not been wired in.
-
-The current build is also not yet a complete Minecraft world simulator:
-there is no crafting system, mining progress, block-state variants, fluids,
-redstone simulation, camera-ray block selection, or Java-equivalent player
-physics. These must be built and validated in later stages.
+Runtime skin replacement is also not implemented. A PNG alone cannot replace
+textures already referenced by a compiled display list; the model needs a
+verified dynamic texture-binding path before arbitrary custom skins can work.
 
 ## Multiplayer and persistence boundary
 
-The mod attempts to spawn blocks with spawn_sync_object() so the objects can
-participate in the current SM64CoopDX multiplayer session. If synchronized
-spawning is unavailable, it falls back to a local object. Mod storage is local
-to this mod installation/save slot; it is not a server-authoritative shared
-world database. Persistent construction across different players or devices
-is not claimed by this version.
+The mod attempts to spawn block objects with `spawn_sync_object()` when
+available. Grid persistence is stored locally through this mod's Mod Storage;
+it is not a server-authoritative world database shared across installations.
 
 ## Validation
 
 GitHub Actions checks:
-- Minecraft Java 26.3 resource extraction and live block registry inspection.
-- Original actor checksum, DynOS GeoLayout hierarchy, and its 20 animation channels.
-- Idle/walk animation formulas and index/value bounds.
-- Grid coordinates, inventory accounting, placement/removal, object collision
-  setup, storage chunk lengths, per-area reload, input consumption, and block
-  capacity using mocked SM64CoopDX APIs.
 
-CI does not render the placeholder blocks or verify collision dimensions on an
-Android device. The 90-unit cell size and 0.45 model scale are the initial
-prototype mapping and require an in-game Android check before being treated as
-final Minecraft-sized geometry.
+- Lua syntax and generated animation data.
+- Embedded DYNOSBIN byte count/header and ModFS import/URI resolution using a
+  mocked ModFS API.
+- Grid coordinate math, inventory accounting, placement/removal, dynamic
+  collision callbacks, persistence, chunk limits and per-area reload.
+- First-person camera setup, camera-ray direction, voxel DDA targeting,
+  crosshair/HUD rendering, heart mapping and damage thresholds.
+- Read-only GeoLayout checks against the original actor binary and Java 26.3
+  block resource/runtime metadata.
+
+A green CI run proves the deterministic tests and package structure pass. It
+does **not** prove that the model renders correctly, that the first-person
+camera feels correct with Android touch input, or that dynamic block collision
+is correctly sized on a real SM64CoopDX Android build. Those require an
+in-game device test.
