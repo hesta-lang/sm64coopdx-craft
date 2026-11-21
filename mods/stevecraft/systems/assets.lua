@@ -76,15 +76,26 @@ end
 
 M.decode_base64 = decode_base64
 
-function M.install_embedded_resources(modfs)
+function M.install_embedded_resources(modfs, root)
     if not is_modfs(modfs) then return false, "missing ModFS" end
+    local first_error
     local ok, manifest = pcall(require, "embedded_block_textures")
     if not ok or type(manifest) ~= "table" then
-        local first_error = manifest
+        first_error = manifest
         ok, manifest = pcall(require, "systems/embedded_block_textures")
+    end
+    if not ok or type(manifest) ~= "table" then
+        local second_error = manifest
+        -- Some mobile mod-file loaders index files differently from desktop.
+        -- Load the root manifest by its exact mod directory as a final fallback.
+        if type(dofile) == "function" and type(root) == "string" then
+            local path = root .. "embedded_block_textures.lua"
+            ok, manifest = pcall(dofile, path)
+        end
         if not ok or type(manifest) ~= "table" then
-            return false, "embedded texture/resource manifest is unavailable: "
-                .. tostring(first_error) .. "; " .. tostring(manifest)
+            return false, "embedded resource manifest unavailable. root require: "
+                .. tostring(first_error) .. "; systems require: "
+                .. tostring(second_error) .. "; root file: " .. tostring(manifest)
         end
     end
 
@@ -179,7 +190,7 @@ function M.import_all(root)
         return false, err
     end
 
-    local embedded_ok, embedded_result = M.install_embedded_resources(modfs)
+    local embedded_ok, embedded_result = M.install_embedded_resources(modfs, root)
     if not embedded_ok then
         local failures = type(embedded_result) == "table" and embedded_result.failures or nil
         print("[SteveCraft] WARNING: embedded resource import had failures: "
