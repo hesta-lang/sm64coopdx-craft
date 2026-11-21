@@ -103,37 +103,44 @@ function Sounds.play_footstep(material, position, volume)
     return Sounds.play(material .. "_step", position, volume or gains[material] or 0.48)
 end
 
--- HOOK_ON_PLAY_SOUND is called for each native C sound request. Replace only
--- Mario's ground-step IDs; jump, landing, voice, slide and world sounds remain.
-local function is_mario_footstep_sound(sound_bits)
-    if type(sound_bits) ~= "number" then return false end
-    local bank = (sound_bits >> 28) & 0x0F
-    if bank ~= 0 then return false end -- SOUND_BANK_ACTION only
-
-    local sound_id = (sound_bits >> 16) & 0xFF
-    -- TERRAIN_STEP / TERRAIN_STEP_TIPTOE plus the 0..7 terrain addend.
-    if (sound_id >= 0x10 and sound_id <= 0x17)
-        or (sound_id >= 0x20 and sound_id <= 0x27) then
-        return true
-    end
-
-    -- Metal, hanging, quicksand and water-specific step variants.
-    return sound_id == 0x2A
-        or sound_id == 0x2D
-        or sound_id == 0x2E
-        or sound_id == 0x2F
-        or sound_id == 0x52
+-- HOOK_ON_PLAY_SOUND is called before a native sound is queued.
+-- Suppress the complete action bank (Mario jumps, landings and acrobatics) and
+-- Mario's voice bank. SteveCraft's own Minecraft samples use audio_sample_play
+-- and are not routed through this hook.
+local function sound_bank(sound_bits)
+    if type(sound_bits) ~= "number" then return -1 end
+    return (sound_bits >> 28) & 0x0F
 end
 
 function Sounds.is_mario_footstep_sound(sound_bits)
-    return is_mario_footstep_sound(sound_bits)
+    if sound_bank(sound_bits) ~= 0 then return false end
+    local sound_id = (sound_bits >> 16) & 0xFF
+    return (sound_id >= 0x10 and sound_id <= 0x17)
+        or (sound_id >= 0x20 and sound_id <= 0x27)
+        or sound_id == 0x2A or sound_id == 0x2D
+        or sound_id == 0x2E or sound_id == 0x2F
+        or sound_id == 0x52
 end
 
-function Sounds.filter_mario_footstep(sound_bits, _position)
-    if is_mario_footstep_sound(sound_bits) then
-        return 0 -- NO_SOUND: prevents the original Mario sample from being queued.
+function Sounds.filter_mario_sounds(sound_bits, _position)
+    local bank = sound_bank(sound_bits)
+    local voice_bank = 5
+    if type(SOUND_BANK_MARIO_VOICE) == "number" then
+        local configured = SOUND_BANK_MARIO_VOICE
+        if configured > 0x0F then
+            configured = (configured >> 28) & 0x0F
+        end
+        voice_bank = configured
     end
-    return nil -- let every non-footstep sound pass unchanged
+    if bank == 0 or bank == voice_bank then
+        return type(NO_SOUND) == "number" and NO_SOUND or 0
+    end
+    return nil
+end
+
+-- Backwards-compatible test/API alias.
+function Sounds.filter_mario_footstep(sound_bits, position)
+    return Sounds.filter_mario_sounds(sound_bits, position)
 end
 
 return Sounds
