@@ -127,3 +127,117 @@ jobs:
           path: ${{ runner.temp }}/minecraft-block-data.json
           if-no-files-found: error
           retention-days: 7
+
+  runtime-registry-extraction:
+    name: Compile and run Minecraft Java runtime registry probe
+    needs:
+      - validate-extractor
+      - extract-and-validate-official-jar
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle 9.8.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.8.2"
+
+      - name: Compile Fabric runtime probe
+        working-directory: tools/minecraft_java_runtime_probe
+        run: gradle --no-daemon --stacktrace build
+
+      - name: Prepare temporary Fabric 26.3 dedicated server
+        run: |
+          SERVER_DIR="$RUNNER_TEMP/stevecraft-mc-server"
+          mkdir -p "$SERVER_DIR/mods"
+          curl --fail --location --retry 3 \
+            "https://meta.fabricmc.net/v2/versions/loader/26.3/0.20.1/1.1.2/server/jar" \
+            --output "$SERVER_DIR/fabric-server.jar"
+          curl --fail --location --retry 3 \
+            "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.166.2+26.3/fabric-api-0.166.2+26.3.jar" \
+            --output "$SERVER_DIR/mods/fabric-api.jar"
+          cp tools/minecraft_java_runtime_probe/build/libs/stevecraft-minecraft-java-runtime-probe-0.1.0.jar \
+            "$SERVER_DIR/mods/stevecraft-block-runtime-probe.jar"
+          printf 'eula=true\n' > "$SERVER_DIR/eula.txt"
+          printf 'online-mode=false\nserver-port=25566\nserver-ip=127.0.0.1\n' > "$SERVER_DIR/server.properties"
+
+      - name: Run live registry dump on dedicated server
+        run: |
+          SERVER_DIR="$RUNNER_TEMP/stevecraft-mc-server"
+          OUTPUT="$RUNNER_TEMP/minecraft-runtime-block-data.json"
+          cd "$SERVER_DIR"
+          set +e
+          timeout 300s java -Xms1G -Xmx3G \
+            -Dstevecraft.blockdata.output="$OUTPUT" \
+            -jar fabric-server.jar nogui > "$RUNNER_TEMP/stevecraft-server.log" 2>&1
+          SERVER_STATUS=$?
+          set -e
+          if [ ! -s "$OUTPUT" ]; then
+            cat "$RUNNER_TEMP/stevecraft-server.log"
+            echo "Runtime probe did not create its output. Server exit code: $SERVER_STATUS"
+            exit 1
+          fi
+          if [ "$SERVER_STATUS" -ne 0 ]; then
+            cat "$RUNNER_TEMP/stevecraft-server.log"
+            echo "Dedicated server did not exit cleanly after dumping the registry."
+            exit "$SERVER_STATUS"
+          fi
+          grep -E "SteveCraft runtime registry dump complete" "$RUNNER_TEMP/stevecraft-server.log"
+
+      - name: Validate live runtime registry output
+        run: |
+          python -m pip install --disable-pip-version-check jsonschema==4.23.0
+          python - <<'PY'
+          import json
+          import os
+          from jsonschema import Draft202012Validator
+
+          schema_path = "tools/minecraft_java_runtime_probe/runtime-block-data.schema.json"
+          output_path = os.path.join(os.environ["RUNNER_TEMP"], "minecraft-runtime-block-data.json")
+          with open(schema_path, encoding="utf-8") as stream:
+              schema = json.load(stream)
+          with open(output_path, encoding="utf-8") as stream:
+              data = json.load(stream)
+          Draft202012Validator.check_schema(schema)
+          Draft202012Validator(schema).validate(data)
+
+          blocks = {entry["id"]: entry for entry in data["blocks"]}
+          if len(blocks) != data["coverage"]["block_registry_entries"]:
+              raise SystemExit("Block registry count does not match unique block identifiers.")
+          state_count = sum(len(entry["states"]) for entry in data["blocks"])
+          if state_count != data["coverage"]["block_state_entries"]:
+              raise SystemExit("Block-state count does not match exported states.")
+          if len(blocks) < 1000 or state_count < 1000:
+              raise SystemExit("The live registry dump appears incomplete.")
+          if data["coverage"]["collision_shapes_are_universal"] is not False:
+              raise SystemExit("Contextual collision shapes must never be marked universal.")
+          stone = blocks.get("minecraft:stone")
+          if stone is None:
+              raise SystemExit("minecraft:stone is missing from the runtime registry.")
+          state = next((value for value in stone["states"] if value["is_default"]), None)
+          if state is None:
+              raise SystemExit("minecraft:stone has no default state.")
+          if abs(state["runtime"]["destroy_speed"] - 1.5) > 0.0001:
+              raise SystemExit("Stone destroy speed does not match the expected Java 26.3 value.")
+          if abs(stone["block_properties"]["explosion_resistance"] - 6.0) > 0.0001:
+              raise SystemExit("Stone explosion resistance does not match the expected Java 26.3 value.")
+          print(f"Validated {len(blocks)} blocks and {state_count} states.")
+          print("Confirmed stone hardness and blast resistance.")
+          print(json.dumps(data["coverage"], indent=2))
+          PY
+
+      - name: Upload live runtime block metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteveCraft-Minecraft-26.3-Runtime-Block-Registry
+          path: ${{ runner.temp }}/minecraft-runtime-block-data.json
+          if-no-files-found: error
+          retention-days: 7
