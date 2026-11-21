@@ -248,7 +248,7 @@ assert(mask_node.displayList == mask_original,
     "terrain mask did not restore the original carrier display list")
 
 local counts = Renderer.debug_counts()
-assert(counts.meshes == 2 and counts.display_nodes == 1 and counts.objects == 2,
+assert(counts.meshes == 2 and counts.display_nodes == 2 and counts.objects == 3,
     "renderer resource registry counts are inconsistent")
 
 print("PASS: per-object display lists, AO, per-face culling, empty enclosed blocks, glass layer and vanilla fallback")
