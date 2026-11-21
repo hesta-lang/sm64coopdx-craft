@@ -21,6 +21,11 @@ local function state_from_mario(mario)
     if type(ACT_FLAG_MOVING) == "number" and (action & ACT_FLAG_MOVING) ~= 0 then
         return "move", native_state
     end
+    -- Some Android builds expose action flags differently; MarioState still
+    -- supplies authoritative floor and forward velocity values.
+    if native_state.floor ~= nil and math.abs(native_state.forward_speed or 0) >= 2 then
+        return "move", native_state
+    end
     return "idle", native_state
 end
 
