@@ -188,6 +188,123 @@ local function safe_storage_load_all()
     return result
 end
 
+
+local function terrain_storage_prefix(world_key)
+    return "sc_terrain_" .. tostring(world_key) .. "_chunk_"
+end
+
+local function get_terrain_world_key()
+    if sCurrentWorldKey ~= nil then return sCurrentWorldKey end
+    local world_key = get_world_context()
+    return world_key
+end
+
+local function load_destroyed_terrain(world_key)
+    if type(world_key) ~= "string" or world_key == "" then return false end
+    if sTerrainWorldKey == world_key then return true end
+
+    sDestroyedTerrain = {}
+    sTerrainWorldKey = world_key
+    local prefix = terrain_storage_prefix(world_key)
+    local all = safe_storage_load_all()
+    local chunks = {}
+    for key, value in pairs(all) do
+        if type(key) == "string" and key:sub(1, #prefix) == prefix then
+            local index = tonumber(key:sub(#prefix + 1))
+            if index and type(value) == "string" then
+                chunks[#chunks + 1] = { index = index, value = value }
+            end
+        end
+    end
+    table.sort(chunks, function(a, b) return a.index < b.index end)
+    for _, chunk in ipairs(chunks) do
+        for record in chunk.value:gmatch("[^;]+") do
+            local snapshot = Terrain.deserialize(record)
+            if snapshot and snapshot.signature then
+                sDestroyedTerrain[snapshot.signature] = snapshot
+            end
+        end
+    end
+    return true
+end
+
+local function save_destroyed_terrain()
+    local world_key = sTerrainWorldKey or get_terrain_world_key()
+    if type(world_key) ~= "string" or world_key == "" then return false end
+    local records = {}
+    for _, snapshot in pairs(sDestroyedTerrain) do
+        local record = Terrain.serialize(snapshot)
+        if record then records[#records + 1] = record end
+    end
+    table.sort(records)
+
+    local chunks, current, current_length = {}, {}, 0
+    for _, record in ipairs(records) do
+        local extra = #record + (#current > 0 and 1 or 0)
+        if current_length + extra > 760 and #current > 0 then
+            chunks[#chunks + 1] = table.concat(current, ";")
+            current, current_length = {}, 0
+            extra = #record
+        end
+        current[#current + 1] = record
+        current_length = current_length + extra
+    end
+    if #current > 0 then chunks[#chunks + 1] = table.concat(current, ";") end
+
+    local prefix = terrain_storage_prefix(world_key)
+    local save_ok = true
+    for index, chunk in ipairs(chunks) do
+        save_ok = safe_storage_save(prefix .. tostring(index), chunk) and save_ok
+    end
+    local all = safe_storage_load_all()
+    for key in pairs(all) do
+        if type(key) == "string" and key:sub(1, #prefix) == prefix then
+            local old_index = tonumber(key:sub(#prefix + 1))
+            if old_index and old_index > #chunks then safe_storage_remove(key) end
+        end
+    end
+    return save_ok
+end
+
+local function on_add_terrain_surface(surface, dynamic)
+    if dynamic == true then return end
+    local static_pool = type(SURFACE_POOL_STATIC) == "number" and SURFACE_POOL_STATIC or 0
+    local ok, pool_type = pcall(function() return tonumber(surface.poolType) end)
+    if not ok or pool_type ~= static_pool then return end
+
+    local world_key = get_terrain_world_key()
+    if not load_destroyed_terrain(world_key) then return end
+    local signature = Terrain.surface_signature(surface)
+    local snapshot = signature and sDestroyedTerrain[signature] or nil
+    if snapshot and Terrain.make_intangible(surface) then
+        sPendingTerrainMasks[#sPendingTerrainMasks + 1] = snapshot
+    end
+end
+
+local function clear_terrain_mask_objects()
+    for _, object in pairs(sTerrainMaskObjects) do
+        if object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
+            pcall(function() object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
+        end
+        if object then VoxelRenderer.detach(object) end
+    end
+    sTerrainMaskObjects = {}
+    sTerrainMaskRetryByObject = {}
+    sSpawnedTerrainMasks = {}
+end
+
+local function on_clear_terrain_areas()
+    clear_terrain_mask_objects()
+    sTerrainWorldKey = nil
+    sDestroyedTerrain = {}
+    sPendingTerrainMasks = {}
+    sMiningTargetKind = nil
+    sMiningSurfaceKey = nil
+    sMiningCellKey = nil
+    sMiningFrames = 0
+    sMiningRequiredFrames = 0
+end
+
 local function inventory_id_key(save_slot, slot)
     return "sc_inventory_" .. tostring(save_slot) .. "_slot_" .. tostring(slot) .. "_id"
 end
