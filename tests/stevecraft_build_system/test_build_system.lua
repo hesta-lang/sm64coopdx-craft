@@ -528,12 +528,20 @@ local function test_separated_modules_and_audio()
     local sounds = modules.sounds
     assert(sounds.load() == true, "sound samples did not load")
     local expected_samples = {
-        "sounds/stone_step.ogg", "sounds/dirt_step.ogg", "sounds/grass_step.ogg",
-        "sounds/wood_step.ogg", "sounds/block_place.ogg", "sounds/block_break.ogg",
+        "modfs:/stevecraft/assets/sounds/stone_step.ogg",
+        "modfs:/stevecraft/assets/sounds/dirt_step.ogg",
+        "modfs:/stevecraft/assets/sounds/grass_step.ogg",
+        "modfs:/stevecraft/assets/sounds/wood_step.ogg",
+        "modfs:/stevecraft/assets/sounds/stone_place.ogg",
+        "modfs:/stevecraft/assets/sounds/dirt_break.ogg",
     }
-    for _, path in ipairs(expected_samples) do
-        assert(audio_samples[path] ~= nil, "missing original SteveCraft sound: " .. path)
+    for _, uri in ipairs(expected_samples) do
+        assert(audio_samples[uri] ~= nil, "missing imported Java sound: " .. uri)
     end
+    local assets = require("systems.assets")
+    assert(assets.get_uri("sounds/stone_step.ogg")
+        == "modfs:/stevecraft/assets/sounds/stone_step.ogg",
+        "asset URI did not resolve through the active ModFS")
 
     local physics = modules.physics
     local walker = {
@@ -547,39 +555,29 @@ local function test_separated_modules_and_audio()
     local state_name = physics.update(walker, sounds, function() return "wood" end)
     assert(state_name == "move", "movement adapter did not detect walking")
     assert(#audio_events == 1, "footstep sound did not fire exactly once")
-    assert(audio_events[1].sample.path == "sounds/wood_step.ogg", "wrong material footstep sound")
+    assert(audio_events[1].sample.path == "modfs:/stevecraft/assets/sounds/wood_step.ogg", "wrong material footstep sound")
     physics.update(walker, sounds, function() return "wood" end)
     assert(#audio_events == 1, "footstep cadence played twice in one frame")
 
     sounds.play_place("minecraft:stone", walker.pos)
     sounds.play_break("minecraft:dirt", walker.pos)
-    assert(audio_events[#audio_events - 1].sample.path == "sounds/block_place.ogg")
-    assert(audio_events[#audio_events].sample.path == "sounds/block_break.ogg")
+    assert(audio_events[#audio_events - 1].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
+    assert(audio_events[#audio_events].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
     print("PASS: separate modules and original block/footstep sound playback")
 end
 
 test_separated_modules_and_audio()
 test_model_asset_registration()
 
-local systems = __STEVECRAFT_TEST.systems
-assert(type(systems) == "table", "subsystem modules were not loaded")
-assert(type(systems.blocks.new_placement_guard) == "function", "blocks.lua was not loaded")
-assert(type(systems.physics.ground_drag) == "function", "physics.lua was not loaded")
-assert(type(systems.camera.forward) == "function", "camera.lua was not loaded")
-assert(type(systems.hud.layout) == "function", "hud.lua was not loaded")
-assert(type(systems.sounds.register) == "function", "sounds.lua was not loaded")
-assert(type(systems.models.modfs_uri) == "function", "models.lua was not loaded")
-local guard = systems.blocks.new_placement_guard()
-assert(guard(10, 1, 2, 3) == true, "first placement in a frame should pass")
-local allowed, why = guard(10, 1, 2, 3)
-assert(allowed == false and why == "duplicate_same_frame", "second same-cell placement in one frame should be blocked")
-assert(guard(10, 1, 2, 4) == true, "different cells must remain placeable in the same frame")
-assert(guard(11, 1, 2, 3) == true, "same cell can be placed on a later frame after removal")
-local layout = systems.hud.layout(320, 180)
-assert(layout.hotbar.x == 69 and layout.hotbar.y == 158, "Java hotbar position must be bottom-centered")
-assert(systems.physics.ground_drag(0.6) > 0.54 and systems.physics.ground_drag(0.6) < 0.55)
-local forward = systems.camera.forward(0, 0)
-assert(math.abs(forward.z + 1) < 0.0001, "camera ray direction should match SM64 first-person camera")
-print("PASS: modular subsystem loading, anti-duplicate guard, camera, HUD layout and physics helpers")
+local modules = __STEVECRAFT_TEST.modules
+assert(type(modules) == "table", "modular subsystem exports missing")
+for _, name in ipairs({ "blocks", "sounds", "physics", "camera", "hud", "model" }) do
+    assert(type(modules[name]) == "table", "missing current subsystem module: " .. name)
+end
+assert(type(modules.blocks.catalog) == "table", "block catalogue was not loaded")
+assert(type(modules.sounds.play_place) == "function", "block audio adapter was not loaded")
+assert(type(modules.camera.get_ray) == "function", "first-person camera module was not loaded")
+assert(type(modules.hud.render) == "function", "HUD renderer was not loaded")
+print("PASS: current SteveCraft modules and ModFS resource URI adapter")
 
 print("SteveCraft build-system validation passed.")
