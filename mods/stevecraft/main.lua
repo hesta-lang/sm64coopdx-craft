@@ -266,6 +266,8 @@ local function save_destroyed_terrain()
     return save_ok
 end
 
+local clear_terrain_mask_objects
+
 local function on_add_terrain_surface(surface, dynamic)
     if dynamic == true then return end
     local static_pool = type(SURFACE_POOL_STATIC) == "number" and SURFACE_POOL_STATIC or 0
@@ -292,8 +294,6 @@ clear_terrain_mask_objects = function()
     sTerrainMaskRetryByObject = {}
     sSpawnedTerrainMasks = {}
 end
-
-local clear_terrain_mask_objects
 
 local function on_clear_terrain_areas()
     if clear_terrain_mask_objects then clear_terrain_mask_objects() end
