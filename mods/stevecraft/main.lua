@@ -1071,10 +1071,6 @@ local sModelAppliedObject = nil
 local sWarned = false
 local sVerifyWarned = false
 local sLastSteveState = nil
-local sFirstPersonHandModelId = nil
-local sFirstPersonHandObject = nil
-local sFirstPersonHandBehaviorId = nil
-local sFirstPersonHandWarned = false
 
 local sAnimationsRegistered = false
 local sCurrentSteveAnimation = nil
@@ -1471,7 +1467,6 @@ end
 
 local update_steve_health
 local ensure_first_person_camera
-local update_first_person_hand
 
 local function apply_steve_to_mario(m)
     if m == nil or m.playerIndex ~= 0 then return end
@@ -1512,9 +1507,6 @@ local function apply_steve_to_mario(m)
         sCurrentSteveAnimation = nil
     end
     apply_steve_animation(m, state)
-    if update_first_person_hand then
-        update_first_person_hand(m)
-    end
 
     if not already_applied then
         if currentId == modelId then
@@ -2195,140 +2187,6 @@ local function get_camera_ray(m)
     return origin, direction
 end
 
--- Reuse the right-hand GeoLayout shipped inside the same Steve DYNOSBIN.
--- This is a separate camera-relative model object; no hand mesh is recreated.
-local function load_steve_hand_model()
-    if sFirstPersonHandModelId ~= nil then return sFirstPersonHandModelId end
-    if sModelId == nil or type(smlua_model_util_get_id) ~= "function" then return nil end
-
-    local ok, model_id = pcall(smlua_model_util_get_id, "mario_geo_right_hand")
-    if not ok or type(model_id) ~= "number" or model_id == E_MODEL_ERROR_MODEL then
-        if not sFirstPersonHandWarned then
-            print("[SteveCraft] WARNING: Steve actor has no resolvable mario_geo_right_hand layout; first-person hand stays hidden.")
-            sFirstPersonHandWarned = true
-        end
-        return nil
-    end
-
-    sFirstPersonHandModelId = model_id
-    return model_id
-end
-
-local function first_person_hand_init(obj)
-    obj.oFlags = OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE
-    obj.oCollisionDistance = 0
-    obj.oDrawingDistance = GRID_CELL_SIZE * 24
-    obj.oOpacity = 255
-    if sFirstPersonHandModelId ~= nil and type(obj_set_model_extended) == "function" then
-        pcall(obj_set_model_extended, obj, sFirstPersonHandModelId)
-    end
-    if type(obj_scale) == "function" then
-        obj_scale(obj, 0.8)
-    end
-end
-
-local function first_person_hand_loop(obj)
-    if not is_first_person_active() then
-        if type(ACTIVE_FLAG_DEACTIVATED) == "number" then
-            obj.activeFlags = ACTIVE_FLAG_DEACTIVATED
-        end
-        if sFirstPersonHandObject == obj then
-            sFirstPersonHandObject = nil
-        end
-        return
-    end
-
-    local mario = gMarioStates and gMarioStates[0] or nil
-    local origin, direction = get_camera_ray(mario)
-    local camera = gFirstPersonCamera
-    if origin == nil or direction == nil or camera == nil then return end
-
-    local yaw = camera.yaw * math.pi / 32768
-    local right_x = math.cos(yaw)
-    local right_z = -math.sin(yaw)
-    local forward_distance = 72
-    local right_offset = 30
-    local lower_offset = 24
-
-    obj.oPosX = origin.x + direction.x * forward_distance + right_x * right_offset
-    obj.oPosY = origin.y + direction.y * forward_distance - lower_offset
-    obj.oPosZ = origin.z + direction.z * forward_distance + right_z * right_offset
-    obj.oFaceAngleYaw = camera.yaw - 0x8000
-    obj.oFaceAnglePitch = camera.pitch
-    obj.oFaceAngleRoll = 0
-end
-
-local function ensure_first_person_hand_behavior()
-    if sFirstPersonHandBehaviorId ~= nil then return true end
-    if type(hook_behavior) ~= "function" then return false end
-
-    local object_list = OBJ_LIST_DEFAULT or OBJ_LIST_UNIMPORTANT
-    if type(object_list) ~= "number" then return false end
-
-    local ok, behavior_id = pcall(
-        hook_behavior,
-        nil,
-        object_list,
-        false,
-        first_person_hand_init,
-        first_person_hand_loop
-    )
-    if not ok or behavior_id == nil then
-        if not sFirstPersonHandWarned then
-            print("[SteveCraft] WARNING: could not register the local first-person hand behavior.")
-            sFirstPersonHandWarned = true
-        end
-        return false
-    end
-
-    sFirstPersonHandBehaviorId = behavior_id
-    return true
-end
-
-update_first_person_hand = function(m)
-    if not is_first_person_active() then
-        if sFirstPersonHandObject ~= nil then
-            if type(ACTIVE_FLAG_DEACTIVATED) == "number" then
-                sFirstPersonHandObject.activeFlags = ACTIVE_FLAG_DEACTIVATED
-            end
-            sFirstPersonHandObject = nil
-        end
-        return
-    end
-
-    if load_steve_hand_model() == nil or not ensure_first_person_hand_behavior() then
-        return
-    end
-    if sFirstPersonHandObject ~= nil then return end
-    if type(spawn_non_sync_object) ~= "function" or type(E_MODEL_MARIO) ~= "number" then
-        if not sFirstPersonHandWarned then
-            print("[SteveCraft] WARNING: local object spawning is unavailable; first-person hand stays hidden.")
-            sFirstPersonHandWarned = true
-        end
-        return
-    end
-
-    local position = m and m.pos or { x = 0, y = 0, z = 0 }
-    local ok, object = pcall(
-        spawn_non_sync_object,
-        sFirstPersonHandBehaviorId,
-        E_MODEL_MARIO,
-        position.x or 0,
-        position.y or 0,
-        position.z or 0,
-        function(obj)
-            first_person_hand_init(obj)
-        end
-    )
-    if ok and object ~= nil then
-        sFirstPersonHandObject = object
-        first_person_hand_loop(object)
-    elseif not sFirstPersonHandWarned then
-        print("[SteveCraft] WARNING: SM64CoopDX could not spawn the first-person hand object.")
-        sFirstPersonHandWarned = true
-    end
-end
-
 local function trace_voxel_ray(origin, direction, max_distance, blocks)
     if origin == nil or direction == nil then return nil end
     blocks = blocks or sWorldBlocks
@@ -2759,10 +2617,6 @@ local function get_build_system_state()
 end
 
 local function on_warp()
-    if sFirstPersonHandObject ~= nil and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
-        pcall(function() sFirstPersonHandObject.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
-    end
-    sFirstPersonHandObject = nil
     sModelAppliedObject = nil
     sLastSteveState = nil
     sCurrentSteveAnimation = nil
@@ -2794,8 +2648,6 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         load_actor = load_steve_model,
         expected_binary_size = STEVE_GEO_BINARY_SIZE,
         actor_file = STEVE_GEO_FILE,
-        load_hand_model = load_steve_hand_model,
-        update_first_person_hand = update_first_person_hand,
     }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = ensure_first_person_camera,
