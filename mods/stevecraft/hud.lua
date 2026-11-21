@@ -59,6 +59,11 @@ local block_tiles = {
     ["minecraft:bedrock"] = "block_bedrock",
 }
 
+local function is_power_of_two(value)
+    value = math.floor(tonumber(value) or 0)
+    return value > 0 and (value & (value - 1)) == 0
+end
+
 local function load_textures()
     if loaded then return end
     loaded = true
@@ -69,8 +74,12 @@ local function load_textures()
         if uri ~= nil then
             local ok, info = pcall(get_texture_info, uri)
             if ok and type(info) == "table" and info.texture ~= nil
-                and type(info.width) == "number" and type(info.height) == "number" then
+                and is_power_of_two(info.width) and is_power_of_two(info.height) then
                 textures[key] = info
+            elseif ok and type(info) == "table" then
+                -- DJUI's HUD texture renderer rejects non-power-of-two images.
+                -- Use the pixel HUD fallback instead of raising a script error.
+                print("[SteveCraft] HUD sprite skipped (non-power-of-two): " .. relative_path)
             end
         end
     end
@@ -158,28 +167,41 @@ function HUD.render(context)
     render_meter_row("food", context.hunger_points or 20, screen_width - row_width - 4, meter_y, icon_scale)
 
     local hotbar_scale = math.max(0.72, math.min(1.0, (screen_width - 24) / 256))
-    local hotbar_x = (screen_width - 182 * hotbar_scale) * 0.5 - hotbar_scale
-    local hotbar_y = screen_height - 22 * hotbar_scale - 12 - 5 * hotbar_scale
-    if not render_texture(textures.hotbar, hotbar_x, hotbar_y, hotbar_scale, hotbar_scale) then
-        rect((screen_width - 184 * hotbar_scale) * 0.5, hotbar_y + 5 * hotbar_scale,
-            184 * hotbar_scale, 22 * hotbar_scale, 18, 18, 18, 210)
-    end
+    local hotbar_x = (screen_width - 184 * hotbar_scale) * 0.5
+    local hotbar_y = screen_height - 27 * hotbar_scale - 12
+    -- Procedural pixel bar: unlike the original 182x22 PNG, all HUD geometry
+    -- is independent of MPOT textures and cannot trigger DJUI's texture error.
+    rect(hotbar_x, hotbar_y, 184 * hotbar_scale, 27 * hotbar_scale, 5, 5, 5, 245)
+    rect(hotbar_x + 2 * hotbar_scale, hotbar_y + 2 * hotbar_scale,
+        180 * hotbar_scale, 23 * hotbar_scale, 90, 90, 90, 255)
+    rect(hotbar_x + 3 * hotbar_scale, hotbar_y + 3 * hotbar_scale,
+        178 * hotbar_scale, 21 * hotbar_scale, 35, 35, 35, 255)
 
     for slot = 1, 9 do
         local slot_x = hotbar_x + (2 + (slot - 1) * 20) * hotbar_scale
-        local slot_y = hotbar_y + 6 * hotbar_scale
+        local slot_y = hotbar_y + 5 * hotbar_scale
         if slot == selected_slot then
-            if not render_texture(textures.selection, slot_x - 6 * hotbar_scale, slot_y - 5 * hotbar_scale,
-                0.65 * hotbar_scale, 0.65 * hotbar_scale) then
-                rect(slot_x - 1, slot_y - 1, 20 * hotbar_scale, 20 * hotbar_scale, 245, 225, 170, 255)
-            end
+            rect(slot_x - 1 * hotbar_scale, slot_y - 1 * hotbar_scale,
+                20 * hotbar_scale, 20 * hotbar_scale, 245, 225, 170, 255)
+            rect(slot_x + 1 * hotbar_scale, slot_y + 1 * hotbar_scale,
+                16 * hotbar_scale, 16 * hotbar_scale, 25, 25, 25, 255)
+        else
+            rect(slot_x, slot_y, 18 * hotbar_scale, 18 * hotbar_scale, 18, 18, 18, 255)
         end
 
         local item = inventory[slot]
         if item and item.id then
             local icon = block_tiles[item.id]
-            if not render_tile(icon, slot_x + 2 * hotbar_scale, slot_y + 2 * hotbar_scale, 0.75 * hotbar_scale) then
-                rect(slot_x + 4 * hotbar_scale, slot_y + 4 * hotbar_scale,
+            -- Minecraft-like miniature cube: dark extrusion on the right and
+            -- bottom, with the original 16x16 pixel texture as the front face.
+            local icon_x = slot_x + 1 * hotbar_scale
+            local icon_y = slot_y + 1 * hotbar_scale
+            rect(icon_x + 14 * hotbar_scale, icon_y + 2 * hotbar_scale,
+                2 * hotbar_scale, 13 * hotbar_scale, 20, 20, 20, 255)
+            rect(icon_x + 2 * hotbar_scale, icon_y + 14 * hotbar_scale,
+                14 * hotbar_scale, 2 * hotbar_scale, 28, 28, 28, 255)
+            if not render_tile(icon, icon_x, icon_y, hotbar_scale) then
+                rect(icon_x + 2 * hotbar_scale, icon_y + 2 * hotbar_scale,
                     12 * hotbar_scale, 12 * hotbar_scale, 130, 130, 130, 255)
             end
             text(item.count or 0, slot_x + 11 * hotbar_scale, slot_y + 12 * hotbar_scale, 0.42 * hotbar_scale)
