@@ -614,6 +614,17 @@ local function test_separated_modules_and_audio()
     physics.update(walker, sounds, function() return "wood" end)
     assert(#audio_events == audio_baseline + 1, "footstep cadence played twice in one frame")
 
+    -- Fallback path: a grounded MarioState with forward speed must still emit
+    -- Minecraft footsteps even if ACT_FLAG_MOVING is not set by this build.
+    local fallback_walker = {
+        action = 0, forwardVel = 6, floor = {},
+        pos = { x = 0, y = 0, z = 0 }, vel = { y = 0 },
+    }
+    gGlobalTimer = 701
+    state_name = physics.update(fallback_walker, sounds, function() return "stone" end)
+    assert(state_name == "move", "grounded forward movement fallback was not detected")
+    assert(#audio_events == audio_baseline + 2, "fallback Minecraft footstep did not play")
+
     sounds.play_place("minecraft:stone", walker.pos)
     sounds.play_break("minecraft:dirt", walker.pos)
     assert(audio_events[audio_baseline + 2].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
