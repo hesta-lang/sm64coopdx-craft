@@ -1,46 +1,50 @@
 -- SteveCraft movement adapter.
--- This module observes SM64CoopDX movement state to select Steve's idle/walk
--- animation and drive paced footstep audio. It does not replace Mario physics:
--- gravity, acceleration, friction, collision response and jump impulses remain
--- native SM64CoopDX until a separately validated Minecraft physics port exists.
-
+-- The host SM64CoopDX C engine remains authoritative for MarioState physics.
+-- Lua reads that native state to select Steve animations and footstep timing.
 local Physics = {}
+local Native = require("systems/native_engine")
 local last_state = nil
 local last_step_frame = -100000
 
 local function state_from_mario(mario)
-    if mario == nil then return "idle" end
-    local action = mario.action or 0
+    local native_state = Native.read_player_physics_state(mario)
+    if native_state == nil then return "idle", nil end
+
+    local action = native_state.action
     if type(ACT_FLAG_SWIMMING) == "number" and (action & ACT_FLAG_SWIMMING) ~= 0 then
-        return "swim"
+        return "swim", native_state
     end
     if type(ACT_FLAG_AIR) == "number" and (action & ACT_FLAG_AIR) ~= 0 then
-        local vertical_speed = mario.vel and (mario.vel.y or 0) or 0
-        if vertical_speed > 0 then return "jump" end
-        return "fall"
+        if native_state.velocity_y > 0 then return "jump", native_state end
+        return "fall", native_state
     end
     if type(ACT_FLAG_MOVING) == "number" and (action & ACT_FLAG_MOVING) ~= 0 then
-        return "move"
+        return "move", native_state
     end
-    return "idle"
+    return "idle", native_state
 end
 
 function Physics.get_state(mario)
-    return state_from_mario(mario)
+    local state = state_from_mario(mario)
+    return state
+end
+
+function Physics.get_native_state(mario)
+    return Native.read_player_physics_state(mario)
 end
 
 function Physics.update(mario, sounds, get_footstep_material)
-    local state = state_from_mario(mario)
+    local state, native_state = state_from_mario(mario)
     if state ~= last_state then
         last_state = state
         print("[SteveCraft] Movement state: " .. state)
     end
 
-    if state ~= "move" or mario == nil or mario.floor == nil then
+    if state ~= "move" or native_state == nil or native_state.floor == nil then
         return state
     end
 
-    local speed = math.abs(tonumber(mario.forwardVel) or 0)
+    local speed = math.abs(native_state.forward_speed)
     if speed < 2 then return state end
 
     local frame = tonumber(gGlobalTimer) or 0
@@ -51,7 +55,7 @@ function Physics.update(mario, sounds, get_footstep_material)
             and get_footstep_material(mario)
             or "stone"
         if sounds and type(sounds.play_footstep) == "function" then
-            sounds.play_footstep(material, mario.pos, math.min(0.62, 0.38 + speed * 0.012))
+            sounds.play_footstep(material, native_state.position, math.min(0.62, 0.38 + speed * 0.012))
         end
     end
 
@@ -61,6 +65,10 @@ end
 function Physics.reset()
     last_state = nil
     last_step_frame = -100000
+end
+
+function Physics.native_capabilities()
+    return Native.capabilities()
 end
 
 return Physics
