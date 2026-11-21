@@ -105,14 +105,11 @@ end
 
 function Terrain.make_intangible(surface)
     if surface == nil then return false end
+    if type(SURFACE_FLAG_INTANGIBLE) ~= "number" then
+        return false
+    end
     local ok = pcall(function()
-        if type(SURFACE_FLAG_INTANGIBLE) == "number" then
-            surface.flags = (tonumber(surface.flags) or 0) | SURFACE_FLAG_INTANGIBLE
-        elseif type(SURFACE_INTANGIBLE) == "number" then
-            surface.type = SURFACE_INTANGIBLE
-        else
-            error("surface intangible flag is unavailable")
-        end
+        surface.flags = (tonumber(surface.flags) or 0) | SURFACE_FLAG_INTANGIBLE
     end)
     return ok
 end
