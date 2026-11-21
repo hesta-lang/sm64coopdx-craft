@@ -67,13 +67,13 @@ jobs:
       - name: Verify package contents
         run: |
           unzip -l SteveCraft-0.4.1-alpha.zip
-          unzip -p SteveCraft-0.3.0-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
-          unzip -p SteveCraft-0.3.0-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
+          unzip -p SteveCraft-0.4.1-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
+          unzip -p SteveCraft-0.4.1-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.3.0-alpha
-          path: SteveCraft-0.3.0-alpha.zip
+          name: SteveCraft-0.4.1-alpha
+          path: SteveCraft-0.4.1-alpha.zip
           if-no-files-found: error
           retention-days: 14
