@@ -89,4 +89,5 @@ end
 -- Native SM64CoopDX movement remains enabled in this validation stage.
 hook_event(HOOK_MARIO_UPDATE, apply_steve_to_mario)
 hook_event(HOOK_ON_WARP, on_warp)
+-- Build metadata: 0.2.2-alpha; this controller is observational only.
 print("[SteveCraft] Standalone mod loaded (" .. STEVECRAFT_VERSION .. ").")
