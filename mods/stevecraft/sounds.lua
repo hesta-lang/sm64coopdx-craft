@@ -27,6 +27,8 @@ local sample_files = {
 }
 local SAMPLE_COUNT = 18
 local Assets = require("assets")
+local retry_after_frame = -1
+local last_load_count = -1
 
 local function current_position(position)
     if position ~= nil then return position end
@@ -45,30 +47,62 @@ local function material_for_block(block_id)
     return "stone"
 end
 
-function Sounds.load()
-    if attempted then return next(samples) ~= nil end
-    attempted = true
+function Sounds.load(force)
+    local current_frame = tonumber(gGlobalTimer) or 0
+    if attempted then return true end
+    if not force and current_frame < retry_after_frame then
+        return next(samples) ~= nil
+    end
+    retry_after_frame = current_frame + 120
 
     if type(audio_sample_load) ~= "function" then
-        print("[SteveCraft] WARNING: ModAudio sample loading is unavailable; block sounds are disabled.")
+        if last_load_count ~= 0 then
+            print("[SteveCraft] ERROR: ModAudio audio_sample_load is unavailable.")
+            last_load_count = 0
+        end
         return false
     end
 
     local loaded = 0
+    local failed = 0
     for name, path in pairs(sample_files) do
-        local uri = Assets.get_uri(path)
-        local ok, sample = false, nil
-        if uri ~= nil then
-            ok, sample = pcall(audio_sample_load, uri)
-        end
-        if ok and sample ~= nil then
-            samples[name] = sample
-            loaded = loaded + 1
+        if samples[name] == nil then
+            local uri = Assets.get_uri(path)
+            local ok, sample = false, nil
+            if uri ~= nil then
+                ok, sample = pcall(audio_sample_load, uri)
+            end
+            local is_loaded = false
+            if ok and sample ~= nil then
+                local read_ok, state = pcall(function() return sample.loaded end)
+                is_loaded = not read_ok or state ~= false
+            end
+            if ok and sample ~= nil and is_loaded then
+                samples[name] = sample
+                loaded = loaded + 1
+                if type(MOD_AUDIO_CHANNEL_SFX) == "number" then
+                    pcall(function() sample.channel = MOD_AUDIO_CHANNEL_SFX end)
+                end
+                pcall(function() sample.baseVolume = 1.0 end)
+            else
+                failed = failed + 1
+                if failed <= 2 then
+                    print("[SteveCraft] WARNING: failed to load " .. path .. " from "
+                        .. tostring(uri) .. ": " .. tostring(sample))
+                end
+            end
         else
-            print("[SteveCraft] WARNING: could not load Java sound " .. path .. ": " .. tostring(sample))
+            loaded = loaded + 1
         end
     end
-    print("[SteveCraft] Loaded " .. tostring(loaded) .. "/" .. tostring(SAMPLE_COUNT) .. " Java block sound samples.")
+    if loaded == SAMPLE_COUNT then
+        attempted = true
+        print("[SteveCraft] Loaded all " .. tostring(loaded) .. " Minecraft block audio samples.")
+    elseif last_load_count ~= loaded then
+        print("[SteveCraft] Minecraft block audio loaded " .. tostring(loaded)
+            .. "/" .. tostring(SAMPLE_COUNT) .. "; retrying after resource check.")
+    end
+    last_load_count = loaded
     return loaded > 0
 end
 
@@ -76,8 +110,12 @@ function Sounds.play(name, position, volume)
     if not attempted then Sounds.load() end
     local sample = samples[name]
     if sample == nil or type(audio_sample_play) ~= "function" then return false end
-    local ok, result = pcall(audio_sample_play, sample, current_position(position), volume or 0.75)
-    return ok and result ~= false
+    local ok, result = pcall(audio_sample_play, sample, current_position(position), volume or 0.9)
+    if not ok then
+        print("[SteveCraft] ERROR: audio_sample_play failed for " .. tostring(name) .. ": " .. tostring(result))
+        return false
+    end
+    return result ~= false
 end
 
 function Sounds.play_place(block_id, position)
@@ -92,15 +130,22 @@ function Sounds.play_break(block_id, position)
     return Sounds.play(material .. "_break", position, volume)
 end
 
+function Sounds.reset_audio_cache()
+    samples = {}
+    attempted = false
+    retry_after_frame = -1
+    last_load_count = -1
+end
+
 function Sounds.play_footstep(material, position, volume)
     material = type(material) == "string" and material:lower() or "stone"
     if material == "oak" or material == "planks" or material == "log" then material = "wood" end
     if samples[material .. "_step"] == nil then material = "stone" end
     local gains = {
-        stone = 0.52, dirt = 0.43, grass = 0.38,
-        wood = 0.49, glass = 0.45, sand = 0.40,
+        stone = 0.92, dirt = 0.82, grass = 0.78,
+        wood = 0.88, glass = 0.84, sand = 0.82,
     }
-    return Sounds.play(material .. "_step", position, volume or gains[material] or 0.48)
+    return Sounds.play(material .. "_step", position, volume or gains[material] or 0.86)
 end
 
 -- HOOK_ON_PLAY_SOUND is called before a native sound is queued.
