@@ -177,20 +177,20 @@ jobs:
 
       - name: Verify package contents
         run: |
-          unzip -t SteveCraft-0.4.5-alpha.zip
-          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " assets.lua"
-          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/assets.lua"
-          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/voxel_renderer.lua"
-          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/embedded_block_textures.lua"
-          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/grid_transform.lua"
-          unzip -l SteveCraft-0.4.5-alpha.zip
-          unzip -p SteveCraft-0.4.5-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
-          unzip -p SteveCraft-0.4.5-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
+          unzip -t SteveCraft-0.4.6-alpha.zip
+          unzip -l SteveCraft-0.4.6-alpha.zip | grep -q " assets.lua"
+          unzip -l SteveCraft-0.4.6-alpha.zip | grep -q " systems/assets.lua"
+          unzip -l SteveCraft-0.4.6-alpha.zip | grep -q " systems/voxel_renderer.lua"
+          unzip -l SteveCraft-0.4.6-alpha.zip | grep -q " systems/embedded_block_textures.lua"
+          unzip -l SteveCraft-0.4.6-alpha.zip | grep -q " systems/grid_transform.lua"
+          unzip -l SteveCraft-0.4.6-alpha.zip
+          unzip -p SteveCraft-0.4.6-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
+          unzip -p SteveCraft-0.4.6-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
           name: SteveCraft-0.4.6-alpha
-          path: SteveCraft-0.4.5-alpha.zip
+          path: SteveCraft-0.4.6-alpha.zip
           if-no-files-found: error
           retention-days: 14
