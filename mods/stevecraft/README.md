@@ -1,49 +1,42 @@
-# SteveCraft — standalone mod (alpha)
+# SteveCraft — proxy-driven Steve (alpha)
 
-SteveCraft is packaged as a normal SM64CoopDX mod. It does not patch the
-Android APK or add native code to the game executable.
+SteveCraft is a standalone SM64CoopDX mod. It does not patch the Android APK
+or add native code to the game executable.
 
 ## Player architecture
 
-- Steve has an independent Lua player state, controller and rendered object.
-- Mario remains the engine's player/proxy identity for interactions, damage,
-  collision, networking and moving platforms.
-- Steve's controller owns position and velocity during the supported ground
-  and air steps, then mirrors that state into MarioState. Mario is the engine
-  compatibility proxy, not a second movement authority.
-- The mod hides Mario only after the separate Steve model object exists.
-- DynOS compiles the included actor source into the custom Steve model when
-  the mod is loaded.
+- Place the supplied original DynOS binary at
+  `mods/stevecraft/actors/steve_geo.bin`, unchanged.
+- Its internal GeoLayout is named `mario_geo`; DynOS registers the custom actor
+  by the binary filename, `steve_geo`. Lua therefore requests
+  `smlua_model_util_get_id("steve_geo")`.
+- Lua assigns that model to the existing `m.marioObj` with
+  `obj_set_model_extended`. It does not spawn another Steve object or hide Mario.
+- The same Mario object remains the engine proxy for collision, actions, damage,
+  platforms and networking. SteveState retains authority over position and
+  velocity during ground/air physics steps, mirroring its transform to
+  MarioState and the same object.
+- SM64's action and animation timeline stays attached to that player object.
+  The binary uses a Mario-style GeoLayout hierarchy; its animation compatibility
+  still needs in-game validation.
 
-## Model assets
+## Binary-only asset pipeline
 
-This alpha includes the classic Steve model geometry and 64x64 skin source
-from Mojang's bedrock-samples humanoid model. The conversion preserves the
-8x8 head, 8x12x4 torso, classic 4-pixel arms and legs, and the second skin
-layer (hat, jacket, sleeves and pants), with their UV coordinates.
+The actor directory is intentionally binary-only: `steve_geo.bin` is the sole
+file. The package no longer creates or includes actor source folders,
+`geo.inc.c`, `geo.h`, `geo_header.h`, `model.inc.c`, generated textures,
+or a Python model generator.
 
-The generator in tools creates:
-- actors/steve/geo.inc.c — articulated GeoLayout for body, head, arms and legs;
-- actors/steve/model.inc.c — textured cube meshes and display lists;
-- actors/steve/texture.inc.c — the two skin atlas textures;
-- two 64x32 PNG atlas halves. Each RGBA16 half occupies at most 4 KiB.
+The earlier `CUSTOM_CMD` errors are consistent with DynOS parsing the generated
+`geo.inc.c` source during pack generation. Removing those generated source
+folders and loading the supplied compiled binary directly avoids that source
+parser path; no commands are stripped from the binary.
 
-The actor source is generated from source/humanoid.custom.geo.json and
-source/steve.png. On mod load, SM64CoopDX's DynOS mod-pack generation step
-converts those sources into the steve_geo actor binary. The Lua mod then
-loads it through smlua_model_util_get_id.
+## Remaining validation
 
-## Limits
-
-- The GeoLayout preserves separate head, arm and leg joints, but custom
-  Minecraft animation clips have not been imported yet.
-- The controller is experimental; full Minecraft parity for water, ceilings,
-  ladders, knockback, riding and special movement is not complete.
-- The Minecraft first-/third-person camera and touch-look behavior are not
-  included yet.
-- The model and Lua controller still require an in-game visual/physics test.
-  CI checks source generation, Lua syntax and ZIP packaging; it does not
-  certify in-game rendering or physics.
-
-The PR remains draft until the model, collision bridge and controller have
-been tested in SM64CoopDX.
+- The Steve ground/air controller is experimental; water, ceilings, ladders,
+  knockback, riding and special movement still need in-game validation.
+- The actor's visual scale and Mario-animation compatibility need testing on
+  the Android build.
+- CI checks the binary signature, Lua syntax and package contents. It cannot
+  certify the in-game rendering result.

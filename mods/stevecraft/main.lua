@@ -1,9 +1,9 @@
--- name: SteveCraft - Independent Player
--- description: Runs a separate Steve controller and render object while Mario remains the engine compatibility proxy.
+-- name: SteveCraft - Proxy-Driven Steve
+-- description: Uses Steve movement on the existing Mario player object with the supplied Steve model as its renderer.
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.1.0-alpha"
+local STEVECRAFT_VERSION = "0.2.0-alpha"
 local STEVE_GEO_NAME = "steve_geo"
 
 -- These values are an initial SM64-unit controller profile, not final
@@ -33,10 +33,8 @@ end
 local function get_player_state(playerIndex)
     if sPlayers[playerIndex] == nil then
         sPlayers[playerIndex] = {
-            visual = nil,
             proxyObject = nil,
-            originalInvisible = false,
-            ownsHiddenFlag = false,
+            modelApplied = false,
             initialized = false,
             position = { x = 0.0, y = 0.0, z = 0.0 },
             velocity = { x = 0.0, y = 0.0, z = 0.0 },
@@ -57,13 +55,13 @@ local function load_steve_model()
 
     sModelLoadAttempted = true
     local ok, modelId = pcall(smlua_model_util_get_id, STEVE_GEO_NAME)
-    if ok and type(modelId) == "number" and modelId > 0 then
+    if ok and type(modelId) == "number" and modelId ~= E_MODEL_ERROR_MODEL then
         sModelId = modelId
         return sModelId
     end
 
     if not sModelWarningShown then
-        print("[SteveCraft] Missing actors/steve_geo.bin; keeping the vanilla player visible and vanilla physics active.")
+        print("[SteveCraft] Could not load actors/steve_geo.bin; keeping vanilla rendering and physics active.")
         sModelWarningShown = true
     end
     return nil
@@ -83,90 +81,9 @@ local function initialize_steve_state(m, state)
     state.yaw = m.faceAngle.y
     state.onGround = m.floor ~= nil and m.pos.y <= m.floorHeight + 2.0
     state.proxyObject = m.marioObj
+    state.modelApplied = false
     state.initialized = true
     state.lastPhysicsFrame = -1
-end
-
-local function hide_mario_proxy(m, state)
-    if m == nil or m.marioObj == nil or m.marioObj.header == nil then
-        return false
-    end
-
-    local gfx = m.marioObj.header.gfx
-    if gfx == nil or gfx.node == nil then
-        return false
-    end
-
-    if not state.ownsHiddenFlag then
-        state.originalInvisible = (gfx.node.flags & GRAPH_RENDER_INVISIBLE) ~= 0
-        state.ownsHiddenFlag = true
-        state.proxyObject = m.marioObj
-    end
-
-    -- Mario remains the real SM64 player identity for interactions, damage,
-    -- platforms and engine bookkeeping. Only his mesh is hidden.
-    gfx.node.flags = gfx.node.flags | GRAPH_RENDER_INVISIBLE
-    m.visibleToObjects = true
-    return true
-end
-
-local function restore_mario_proxy(state)
-    if not state.ownsHiddenFlag or state.proxyObject == nil then
-        return
-    end
-
-    local object = state.proxyObject
-    if object.header ~= nil and object.header.gfx ~= nil and object.header.gfx.node ~= nil then
-        local flags = object.header.gfx.node.flags
-        if state.originalInvisible then
-            flags = flags | GRAPH_RENDER_INVISIBLE
-        else
-            flags = flags & (~GRAPH_RENDER_INVISIBLE)
-        end
-        object.header.gfx.node.flags = flags
-    end
-
-    state.ownsHiddenFlag = false
-    state.proxyObject = nil
-end
-
-local function spawn_steve_visual(m, state, modelId)
-    if state.visual ~= nil then
-        return state.visual
-    end
-
-    local visual = spawn_non_sync_object(
-        id_bhvStaticObject,
-        modelId,
-        state.position.x, state.position.y, state.position.z,
-        function(object)
-            object.oFlags = object.oFlags | OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE
-            object.oFaceAngleYaw = state.yaw
-            object.oMoveAngleYaw = state.yaw
-            object.oOpacity = 255
-        end
-    )
-
-    if visual ~= nil then
-        state.visual = visual
-    end
-    return visual
-end
-
-local function update_steve_visual(state)
-    local visual = state.visual
-    if visual == nil then
-        return
-    end
-
-    visual.oPosX = state.position.x
-    visual.oPosY = state.position.y
-    visual.oPosZ = state.position.z
-    visual.oFaceAngleYaw = state.yaw
-    visual.oMoveAngleYaw = state.yaw
-    visual.oVelX = state.velocity.x
-    visual.oVelY = state.velocity.y
-    visual.oVelZ = state.velocity.z
 end
 
 local function write_steve_to_mario_proxy(m, state, floorHeight, floor, wall)
@@ -223,7 +140,7 @@ local function stevecraft_physics(m, stepType, stepArg)
     end
 
     local state = get_player_state(m.playerIndex)
-    if state.visual == nil or not state.initialized then
+    if not state.modelApplied or not state.initialized then
         return nil
     end
     if m.freeze ~= 0 or (m.action & ACT_FLAG_INTANGIBLE) ~= 0 then
@@ -333,7 +250,6 @@ local function stevecraft_physics(m, stepType, stepArg)
     state.lastStepResult = result
 
     write_steve_to_mario_proxy(m, state, floorHeight, floor, wall)
-    update_steve_visual(state)
     return result
 end
 
@@ -361,43 +277,33 @@ local function stevecraft_update_player(m)
 
     local state = get_player_state(m.playerIndex)
     initialize_steve_state(m, state)
+
     if state.lastPhysicsFrame ~= gGlobalTimer then
-        -- Water, hang, freeze and special-action steps are left to SM64.
-        -- Copy their resulting transform back into Steve instead of allowing
-        -- the independent controller to drift away from its Mario proxy.
+        -- Special actions remain handled by SM64. Mirror their resulting
+        -- transform into SteveState until the custom ground/air step resumes.
         read_steve_state_from_proxy(m, state)
     end
 
-    local visual = spawn_steve_visual(m, state, modelId)
-    if visual == nil then
-        return
-    end
-
-    update_steve_visual(state)
-    hide_mario_proxy(m, state)
-end
-
-local function stevecraft_object_unloaded(object)
-    for _, state in pairs(sPlayers) do
-        if state.visual == object then
-            state.visual = nil
-            restore_mario_proxy(state)
-        end
-        if state.proxyObject == object then
-            state.proxyObject = nil
-            state.ownsHiddenFlag = false
-            state.initialized = false
+    -- The same object is both SM64's player proxy and Steve's renderer.
+    -- Replacing only the model keeps MarioState, collision, actions and
+    -- networking attached to the same object. SteveState still owns movement.
+    if not state.modelApplied then
+        local ok = pcall(obj_set_model_extended, m.marioObj, modelId)
+        if ok then
+            state.modelApplied = true
+            print("[SteveCraft] Steve model assigned to the existing player object.")
+        elseif not sModelWarningShown then
+            print("[SteveCraft] Failed to assign Steve model; keeping vanilla rendering.")
+            sModelWarningShown = true
         end
     end
 end
 
 local function stevecraft_on_warp()
-    -- The old area's objects are about to be discarded. Re-seed Steve's
-    -- independent transform from the newly spawned Mario proxy next time.
+    -- A warp may replace Mario's object. Re-seed state and reapply Steve's model.
     for _, state in pairs(sPlayers) do
-        state.visual = nil
         state.proxyObject = nil
-        state.ownsHiddenFlag = false
+        state.modelApplied = false
         state.initialized = false
         state.lastPhysicsFrame = -1
     end
@@ -405,7 +311,6 @@ end
 
 hook_event(HOOK_BEFORE_PHYS_STEP, stevecraft_physics)
 hook_event(HOOK_MARIO_UPDATE, stevecraft_update_player)
-hook_event(HOOK_ON_OBJECT_UNLOAD, stevecraft_object_unloaded)
 hook_event(HOOK_ON_WARP, stevecraft_on_warp)
 
 print("[SteveCraft] Standalone mod loaded (" .. STEVECRAFT_VERSION .. ").")

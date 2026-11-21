@@ -6,8 +6,7 @@ on:
       - android
       - stevecraft-normal-mod-alpha
     paths:
-      - "mods/stevecraft/**"
-      - ".github/workflows/package-stevecraft-mod.yml"
+      - "mods/stevecraft/actors/steve_geo.bin"
   workflow_dispatch:
 
 permissions:
@@ -20,47 +19,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install model and Lua build tools
+      - name: Install Lua and ZIP tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y lua5.4 zip python3-pil
+          sudo apt-get install -y lua5.4 zip
 
-      - name: Generate Steve DynOS actor
+      - name: Validate precompiled DynOS actor
         run: |
-          python3 mods/stevecraft/tools/generate_dynos_actor.py
-          test -s mods/stevecraft/actors/steve/geo.inc.c
-          test -s mods/stevecraft/actors/steve/model.inc.c
-          test -s mods/stevecraft/actors/steve/texture.inc.c
+          ACTOR="mods/stevecraft/actors/steve_geo.bin"
+          test -s "$ACTOR"
+          test "$(head -c 8 "$ACTOR")" = "DYNOSBIN"
+          test "$(find mods/stevecraft/actors -type f | wc -l)" -eq 1
+          test -z "$(find mods/stevecraft/actors -type f ! -name 'steve_geo.bin' -print)"
+          echo "Precompiled actor present: $(wc -c < "$ACTOR") bytes"
 
-      - name: Validate source assets
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image
-          root = Path("mods/stevecraft/actors/steve")
-          assert "const GeoLayout steve_geo" in (root / "geo.inc.c").read_text()
-          assert "GEO_ANIMATED_PART" in (root / "geo.inc.c").read_text()
-          model = (root / "model.inc.c").read_text()
-          for part in ("head", "body", "left_arm", "right_arm", "left_leg", "right_leg"):
-              assert f"steve_{part}_base_dl" in model, part
-          for texture in ("steve_skin_upper.rgba16.png", "steve_skin_lower.rgba16.png"):
-              image = Image.open(root / texture)
-              assert image.size == (64, 32), (texture, image.size)
-          print("Steve model geometry, body joints and 64x32 skin tiles validated.")
-          PY
-
-      - name: Validate mod Lua
+      - name: Validate Lua syntax
         run: luac5.4 -p mods/stevecraft/main.lua
 
-      - name: Package standalone mod
+      - name: Package binary-only standalone mod
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.1.0-alpha.zip" main.lua README.md actors source tools
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.2.0-alpha.zip" main.lua README.md actors/steve_geo.bin
+
+      - name: Verify package contents
+        run: |
+          unzip -l SteveCraft-0.2.0-alpha.zip
+          unzip -p SteveCraft-0.2.0-alpha.zip actors/steve_geo.bin | head -c 8 | grep -q DYNOSBIN
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.1.0-alpha
-          path: SteveCraft-0.1.0-alpha.zip
+          name: SteveCraft-0.2.0-alpha
+          path: SteveCraft-0.2.0-alpha.zip
           if-no-files-found: error
           retention-days: 14
