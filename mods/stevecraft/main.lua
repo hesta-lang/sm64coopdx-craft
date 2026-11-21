@@ -419,6 +419,7 @@ local sFirstPersonWarningShown = false
 local sLastMarioHealth = nil
 local sMiningCellKey = nil
 local sMiningFrames = 0
+local sMiningRequiredFrames = 0
 local update_steve_health
 local ensure_first_person_camera
 
@@ -1109,6 +1110,7 @@ local function update_block_mining(m)
     if x == nil then
         sMiningCellKey = nil
         sMiningFrames = 0
+        sMiningRequiredFrames = 0
         return
     end
 
@@ -1117,6 +1119,7 @@ local function update_block_mining(m)
     if cell == nil then
         sMiningCellKey = nil
         sMiningFrames = 0
+        sMiningRequiredFrames = 0
         return
     end
 
@@ -1124,23 +1127,26 @@ local function update_block_mining(m)
     if definition == nil or definition.destroy_speed < 0 then
         sMiningCellKey = key
         sMiningFrames = 0
+        sMiningRequiredFrames = 0
         return
     end
 
     if sMiningCellKey ~= key then
         sMiningCellKey = key
         sMiningFrames = 0
+        sMiningRequiredFrames = mining_frames_for_hardness(definition.destroy_speed) or 0
     end
 
     sMiningFrames = sMiningFrames + 1
-    local required = mining_frames_for_hardness(definition.destroy_speed)
-    if required ~= nil and sMiningFrames >= required then
+    local required = sMiningRequiredFrames
+    if required > 0 and sMiningFrames >= required then
         local removed, reason = remove_grid_block(x, y, z)
         if not removed then
             print("[SteveCraft] Cannot mine block: " .. tostring(reason))
         end
         sMiningCellKey = nil
         sMiningFrames = 0
+        sMiningRequiredFrames = 0
     end
 end
 
@@ -1155,6 +1161,7 @@ local function consume_build_controls(m)
     if (down & L_TRIG) == 0 then
         sMiningCellKey = nil
         sMiningFrames = 0
+        sMiningRequiredFrames = 0
         return
     end
 
@@ -1197,6 +1204,7 @@ local function consume_build_controls(m)
     else
         sMiningCellKey = nil
         sMiningFrames = 0
+        sMiningRequiredFrames = 0
     end
 
     if consumed ~= 0 then
@@ -1385,7 +1393,7 @@ local function render_build_inventory()
         djui_hud_print_text(selected_text, math.max(4, (screen_width - text_width) * 0.5), start_y - 24, 0.65)
 
         if sMiningCellKey ~= nil then
-            local progress = math.min(1, sMiningFrames / math.max(1, MINING_FRAMES_PER_HARDNESS))
+            local progress = math.min(1, sMiningFrames / math.max(1, sMiningRequiredFrames))
             local bar_width = math.min(140, screen_width * 0.3)
             local bar_x = (screen_width - bar_width) * 0.5
             local bar_y = start_y - 10
@@ -1416,6 +1424,7 @@ local function on_warp()
     sLastMarioHealth = nil
     sMiningCellKey = nil
     sMiningFrames = 0
+    sMiningRequiredFrames = 0
     deactivate_world_objects()
     sCurrentWorldKey = nil
     sCurrentWorldPrefix = nil
