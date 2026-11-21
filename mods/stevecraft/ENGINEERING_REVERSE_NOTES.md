@@ -140,3 +140,48 @@ The read-only inspector and tests are in `tools/stevecraft_rig_audit/` and
 Minecraft Java runtime registry stage succeeds. The original actor binary is
 also checksum-pinned so future packaging or animation work cannot silently
 replace it.
+
+## 7. Math-generated animation channels on the audited rig
+
+The SM64CoopDX renderer increments `MarioBodyState.currAnimPart` at each
+`GEO_ANIMATED_PART` and uses the corresponding order from
+`enum MarioAnimPart` in `include/types.h`. The audited Steve layout has 20
+animated nodes in that traversal order. The first channel indices correspond
+to root translation; with `ANIM_FLAG_6` (`0x40`), `anim_process()` skips
+these three translation channel pairs and then processes three rotation
+channels (X/Y/Z) for each of the 20 animated parts.
+
+Relevant source behavior:
+
+- `src/game/rendering_graph_node.c::anim_process()` consumes translation
+  channels when translation is enabled, then always consumes three rotation
+  channels; it changes the global animation type from translation to rotation.
+- The `ANIM_TYPE_NO_TRANSLATION` branch advances the attribute pointer by six
+  index entries (three channel pairs) before reading root rotation channels.
+- `geo_process_animated_part()` uses the same current animation attribute
+  pointer and advances it for each animated part.
+- `src/pc/lua/utils/smlua_anim_utils.c` copies Lua-provided values and index
+  arrays into a custom `Animation`, and its setter assigns that animation to
+  the supplied object's `animInfo.curAnim`.
+- `include/types.h` defines the 20 MarioAnimPart channels and the Animation
+  structure. Each attribute is an index pair: maximum frame count and zero-based
+  offset into the signed 16-bit values array.
+
+The first generated implementation creates 24-frame idle and walk loops:
+- Idle uses a small sinusoidal torso rotation and opposite head counter-motion.
+- Walk uses opposite sinusoidal left/right arm and thigh rotation, plus small
+  elbow bends.
+- It creates three reserved root-translation pairs followed by 60 rotation
+  channel pairs. Each animation therefore has 126 index entries and 1,440
+  signed-16-bit values.
+
+The Lua generator is tested by `tests/stevecraft_animation/test_animation.lua`.
+It checks exact array lengths, index bounds, integer range, 24-frame phase
+values, and opposing left/right limb motion. The research workflow runs this
+stage only after the Java block registry and original GeoLayout audit pass.
+
+Important limitation: CI tests the mathematical output and API contract, not
+the final Android rendering. The first device test must check limb direction,
+pose scale, camera framing and whether the animation changes from idle to walk
+without affecting Mario's collision or position. Jump, fall and swim animations
+remain a subsequent stage and currently resolve to the idle pose.
