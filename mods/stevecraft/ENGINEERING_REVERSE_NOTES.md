@@ -97,3 +97,46 @@ Before changing geometry or animation code, inspect the actual DynOS GeoLayout a
 - SM64CoopDX object utils: https://github.com/coop-deluxe/sm64coopdx/blob/main/src/pc/lua/utils/smlua_obj_utils.c
 - SM64CoopDX DynOS actor loader: https://github.com/coop-deluxe/sm64coopdx/blob/main/data/dynos_mgr_actor.cpp
 - Official custom player model example: https://github.com/coop-deluxe/sm64coopdx/blob/main/docs/lua/examples/koopa-player-model/main.lua
+
+## 6. Read-only audit of the actual Steve actor binary
+
+The original `mods/stevecraft/actors/minecraft_steve_geo.bin` was decoded
+read-only using the DynOS compression and GeoLayout record format. The file
+was not regenerated or modified. Its SHA-256 is pinned in the rig-audit tool:
+
+`773446e965b4123f032faf1948528a5b1541d4ca7b3fae9fe8220ce0769fcad1`
+
+Verified facts for the `mario_geo` record:
+
+- 361 GeoLayout words and 215 commands.
+- 62 `GEO_OPEN_NODE` and 62 `GEO_CLOSE_NODE` commands; the hierarchy balances.
+- 20 `GEO_ANIMATED_PART` nodes, in the traversal order used by the layout.
+- Zero custom DynOS `GEO_BONE` nodes.
+- Distinct animated-part display lists reference the torso, left/right forearms,
+  and left/right legs. The head mesh is referenced from a separate
+  `GEO_DISPLAY_LIST` node inside the articulated subtree.
+- The layout also contains branches to optional layouts (for example
+  `mario_geo_opt_1` to `mario_geo_opt_7`) and function/switch nodes.
+
+The animated-part indices are not interchangeable with Bedrock's named bones.
+Indices are positional engine channels. A tentative body-role reading of the
+hierarchy must be confirmed from the complete child graph and animation format;
+this audit deliberately reports the exact joint order and embedded references
+instead of inventing a name for every empty pivot.
+
+### Consequence for Lua math animation
+
+The existing binary is not a flat six-cube model. It already has an articulated
+Mario-style GeoLayout with 20 animation-part nodes. This gives a possible path
+to generate keyframe channels from trigonometric functions and register them
+through `smlua_anim_util_register_animation()`. However, the custom animation
+API accepts raw `values` and `index` arrays. Before using it on Steve, we must
+validate the precise channel/index layout expected by SM64CoopDX for these 20
+nodes, including root translation channels. The read-only audit does not yet
+prove that mapping, and no animation has been applied yet.
+
+The read-only inspector and tests are in `tools/stevecraft_rig_audit/` and
+`tests/stevecraft_rig_audit/`. The research workflow runs them only after the
+Minecraft Java runtime registry stage succeeds. The original actor binary is
+also checksum-pinned so future packaging or animation work cannot silently
+replace it.
