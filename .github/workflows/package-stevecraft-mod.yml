@@ -8,7 +8,7 @@ on:
       - stevecraft-0.4.2-alpha
       - stevecraft-0.4.5-alpha
       - stevecraft-0.4.6-alpha
-      - stevecraft-0.4.7-alpha
+      - stevecraft-0.4.8-alpha
       - stevecraft-0.4.1-alpha
     paths:
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
@@ -121,8 +121,10 @@ jobs:
 
           main = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
           required = (
-              'local STEVECRAFT_VERSION = "0.4.7-alpha"',
+              'local STEVECRAFT_VERSION = "0.4.8-alpha"',
               'stevecraft_load_module("model", "model")',
+          'stevecraft_load_module("systems/terrain_destruction", "systems/terrain_destruction")',
+          "Terrain.delete_surface(surface)",
               "Blocks.spawn_once(",
               "GRID_MAX_BLOCKS_PER_AREA = 128",
               "HOOK_MARIO_UPDATE",
@@ -162,8 +164,15 @@ jobs:
         run: |
           lua5.3 tests/stevecraft_voxel_renderer/test_assets.lua
           lua5.3 tests/stevecraft_voxel_renderer/test_voxel_renderer.lua
+          lua5.3 tests/stevecraft_voxel_renderer/test_section_updates.lua
+          lua5.3 tests/stevecraft_voxel_renderer/test_terrain_destruction.lua
           python3 tests/stevecraft_voxel_renderer/test_embed_assets.py
           test -s mods/stevecraft/systems/grid_transform.lua
+          test -s mods/stevecraft/systems/section_updates.lua
+          test -s mods/stevecraft/systems/terrain_destruction.lua
+          grep -q "Renderer.attach_surface_mask" mods/stevecraft/systems/voxel_renderer.lua
+          grep -q "smlua_collision_delete_surface" mods/stevecraft/systems/terrain_destruction.lua
+          grep -q "HOOK_ON_ADD_SURFACE" mods/stevecraft/main.lua
           test -s mods/stevecraft/embedded_block_textures.lua
           test -s mods/stevecraft/systems/embedded_block_textures.lua
           grep -q "G_CC_MODULATERGBA" mods/stevecraft/systems/voxel_renderer.lua
@@ -187,15 +196,15 @@ jobs:
       - name: Package standalone mod and engineering notes
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.7-alpha.zip" main.lua assets.lua embedded_block_textures.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.8-alpha.zip" main.lua assets.lua embedded_block_textures.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
 
       - name: Verify package contents
         run: |
-          unzip -t SteveCraft-0.4.7-alpha.zip
+          unzip -t SteveCraft-0.4.8-alpha.zip
           python3 - <<'PY'
           import zipfile
 
-          archive_path = "SteveCraft-0.4.7-alpha.zip"
+          archive_path = "SteveCraft-0.4.8-alpha.zip"
           required_files = (
               "assets.lua",
               "embedded_block_textures.lua",
@@ -225,7 +234,7 @@ jobs:
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.4.7-alpha
-          path: SteveCraft-0.4.7-alpha.zip
+          name: SteveCraft-0.4.8-alpha
+          path: SteveCraft-0.4.8-alpha.zip
           if-no-files-found: error
           retention-days: 14
