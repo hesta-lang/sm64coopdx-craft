@@ -61,3 +61,26 @@ assert(stored["assets/textures/block/stone.png"] == fake_file, "userdata ModFS d
 assert(fake_file.bytes == string.char(1, 2, 3), "userdata ModFS did not write decoded PNG bytes")
 assert(save_calls == 1, "userdata ModFS did not persist imported assets")
 print("PASS: ModFs userdata compatibility and embedded ModFS resource import")
+
+
+-- When the mobile mod-file package cannot resolve its root Lua module via
+-- require(), the importer must use the explicitly supplied mod directory.
+package.loaded["embedded_block_textures"] = nil
+package.loaded["systems/embedded_block_textures"] = nil
+local old_dofile = dofile
+local fallback_called = false
+_G.dofile = function(path)
+    assert(path == "SteveCraft/embedded_block_textures.lua",
+        "root manifest fallback used an unexpected path: " .. tostring(path))
+    fallback_called = true
+    return { ["textures/stevecraft/icons/stone.png"] = "AQID" }
+end
+local fallback_ok, fallback_report = Assets.install_embedded_resources(dummy, "SteveCraft/")
+_G.dofile = old_dofile
+assert(fallback_called, "root manifest fallback was not attempted")
+assert(fallback_ok == true and fallback_report.installed == 1,
+    "root embedded manifest fallback did not import resources")
+assert(stored["assets/textures/stevecraft/icons/stone.png"] == fake_file,
+    "root manifest fallback did not create icon texture in ModFS")
+assert(fake_file.bytes == string.char(1, 2, 3), "root manifest fallback decoded unexpected bytes")
+print("PASS: root manifest fallback for mobile mod-file loaders")
