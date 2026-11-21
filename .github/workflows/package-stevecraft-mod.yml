@@ -5,6 +5,7 @@ on:
     branches:
       - android
       - stevecraft-normal-mod-alpha
+      - stevecraft-0.4.2-alpha
       - stevecraft-0.4.1-alpha
     paths:
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
