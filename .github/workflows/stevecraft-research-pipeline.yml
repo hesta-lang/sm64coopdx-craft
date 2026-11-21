@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - stevecraft-normal-mod-alpha
+      - stevecraft-0.4.1-alpha
     paths:
       - "tools/minecraft_block_data/**"
       - "tests/minecraft_block_data/**"
@@ -286,6 +287,20 @@ jobs:
             --binary mods/stevecraft/actors/minecraft_steve_geo.bin \
             --layout mario_geo \
             --output "$RUNNER_TEMP/stevecraft-rig-audit.json"
+
+      - name: Probe reusable right-hand GeoLayout
+        id: right-hand
+        run: |
+          if python tools/stevecraft_rig_audit/inspect_geo.py \
+            --binary mods/stevecraft/actors/minecraft_steve_geo.bin \
+            --layout mario_geo_right_hand \
+            --output "$RUNNER_TEMP/stevecraft-right-hand-audit.json"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "The actor includes mario_geo_right_hand as a distinct layout."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "The actor does not expose the expected standalone right-hand layout."
+          fi
 
       - name: Upload Steve rig audit artifact
         uses: actions/upload-artifact@v4
