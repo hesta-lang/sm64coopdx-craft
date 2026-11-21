@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - stevecraft-normal-mod-alpha
+      - stevecraft-0.4.2-alpha
       - stevecraft-0.4.1-alpha
     paths:
       - "tools/minecraft_block_data/**"
