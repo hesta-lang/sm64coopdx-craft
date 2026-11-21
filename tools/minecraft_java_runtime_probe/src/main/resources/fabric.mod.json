@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "stevecraft_block_runtime_probe",
+  "version": "${version}",
+  "name": "SteveCraft Block Runtime Probe",
+  "description": "Temporary server-side registry inspection tool for Minecraft Java 26.3.",
+  "environment": "server",
+  "entrypoints": {
+    "main": ["com.hesta.stevecraftprobe.BlockRegistryDump"]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
