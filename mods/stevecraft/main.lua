@@ -40,8 +40,7 @@ local function stevecraft_load_module(module_name, relative_path)
     error("SteveCraft could not load Lua module " .. module_name .. ": " .. tostring(module), 0)
 end
 
--- The gameplay modules are sibling files of main.lua. The asset installer is
--- the only module in the systems/ subdirectory.
+-- Gameplay modules are siblings of main.lua; engine and asset adapters live in systems/.
 local Assets = stevecraft_load_module("systems/assets", "systems/assets")
 local Native = stevecraft_load_module("systems/native_engine", "systems/native_engine")
 local Blocks = stevecraft_load_module("blocks", "blocks")
@@ -832,6 +831,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         ensure_first_person_camera = Camera.ensure,
         get_camera_ray = Camera.get_ray,
         trace_voxel_ray = trace_voxel_ray,
+        get_world_surface_hit = Camera.get_world_surface_hit,
         health_to_half_hearts = Camera.health_to_half_hearts,
         mining_frames_for_hardness = mining_frames_for_hardness,
     }
