@@ -192,20 +192,35 @@ jobs:
       - name: Verify package contents
         run: |
           unzip -t SteveCraft-0.4.7-alpha.zip
-          unzip -l SteveCraft-0.4.7-alpha.zip > package-list.txt
-          grep -q " assets.lua" package-list.txt
-          grep -q " systems/assets.lua" package-list.txt
-          grep -q " systems/voxel_renderer.lua" package-list.txt
-          grep -q " embedded_block_textures.lua" package-list.txt
-          grep -q " systems/embedded_block_textures.lua" package-list.txt
-          grep -q " textures/stevecraft/icons/stone.png" package-list.txt
-          grep -q " systems/grid_transform.lua" package-list.txt
-          unzip -p SteveCraft-0.4.7-alpha.zip actors/minecraft_steve_geo.bin > actor-check.bin
-          test "$(head -c 8 actor-check.bin)" = "DYNOSBIN"
-          unzip -p SteveCraft-0.4.7-alpha.zip embedded_block_textures.lua > embedded-manifest-check.lua
-          test -s embedded-manifest-check.lua
-          unzip -p SteveCraft-0.4.7-alpha.zip ENGINEERING_REVERSE_NOTES.md > engineering-notes-check.md
-          test -s engineering-notes-check.md
+          python3 - <<'PY'
+          import zipfile
+
+          archive_path = "SteveCraft-0.4.7-alpha.zip"
+          required_files = (
+              "assets.lua",
+              "embedded_block_textures.lua",
+              "systems/assets.lua",
+              "systems/embedded_block_textures.lua",
+              "systems/voxel_renderer.lua",
+              "systems/grid_transform.lua",
+              "assets/textures/stevecraft/icons/stone.png",
+              "assets/textures/stevecraft/icons/grass_block.png",
+              "actors/minecraft_steve_geo.bin",
+              "ENGINEERING_REVERSE_NOTES.md",
+          )
+          with zipfile.ZipFile(archive_path) as package:
+              names = set(package.namelist())
+              missing = [name for name in required_files if name not in names]
+              if missing:
+                  raise SystemExit("Missing package files: " + ", ".join(missing))
+              actor = package.read("actors/minecraft_steve_geo.bin")
+              if not actor.startswith(b"DYNOSBIN"):
+                  raise SystemExit("Packaged Steve actor does not have a DYNOSBIN header.")
+              manifest = package.read("embedded_block_textures.lua").decode("utf-8")
+              if '["textures/stevecraft/icons/stone.png"]' not in manifest:
+                  raise SystemExit("Root embedded manifest is missing generated block icons.")
+              print(f"Verified {len(required_files)} required entries in {archive_path}.")
+          PY
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
