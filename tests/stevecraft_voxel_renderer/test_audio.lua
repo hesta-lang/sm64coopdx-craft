@@ -26,3 +26,48 @@ assert(Blocks.get_footstep_material("minecraft:glass") == "glass")
 assert(Blocks.get_footstep_material("minecraft:sand") == "sand")
 assert(Blocks.get_footstep_material("minecraft:bedrock") == "stone")
 print("PASS: native Mario footstep suppression and per-block Minecraft step material routing")
+
+
+-- Validate ModAudio resource loading itself, including the retry path used
+-- when the embedded ModFS files become available after the first hook call.
+MOD_FS_URI_FORMAT = "modfs:/%s/%s"
+MOD_AUDIO_CHANNEL_SFX = 3
+gGlobalTimer = 1
+function mod_fs_get() return { modPath = "SteveCraft" } end
+local fail_one_sample_once = true
+local loaded_samples = {}
+local played_samples = {}
+function audio_sample_load(uri)
+    assert(uri:match("^modfs:/SteveCraft/assets/sounds/") ~= nil,
+        "sample loader received a non-ModFS sound path: " .. tostring(uri))
+    if fail_one_sample_once and uri:match("/stone_step%.ogg$") then
+        fail_one_sample_once = false
+        return nil
+    end
+    local sample = { filepath = uri, loaded = true }
+    loaded_samples[uri] = sample
+    return sample
+end
+function audio_sample_play(sample, position, volume)
+    played_samples[#played_samples + 1] = {
+        sample = sample, position = position, volume = volume,
+    }
+    -- The host function returns void/nil on a successful queue operation.
+end
+
+assert(Sounds.load(true) == true, "partial ModAudio load should report available samples")
+assert(loaded_samples["modfs:/SteveCraft/assets/sounds/stone_step.ogg"] == nil,
+    "test's first missing-sample condition did not occur")
+gGlobalTimer = 121
+assert(Sounds.load() == true, "ModAudio retry did not load the missing sample")
+local stone_sample = loaded_samples["modfs:/SteveCraft/assets/sounds/stone_step.ogg"]
+assert(stone_sample ~= nil, "stone footstep sample was not retried")
+assert(stone_sample.channel == MOD_AUDIO_CHANNEL_SFX,
+    "Minecraft footstep sample was not assigned to the SFX channel")
+assert(stone_sample.baseVolume == 1.0, "Minecraft footstep base volume was not initialized")
+assert(Sounds.play_footstep("stone", { x = 1, y = 2, z = 3 }) == true,
+    "audio_sample_play void return was incorrectly treated as failure")
+assert(#played_samples == 1, "stone footstep did not queue exactly one sample")
+assert(played_samples[1].sample == stone_sample, "wrong sample was played for stone")
+assert(played_samples[1].volume >= 0.9, "Minecraft footstep output volume remains too low")
+print("PASS: ModAudio SFX loading, retry, and audible footstep playback")
