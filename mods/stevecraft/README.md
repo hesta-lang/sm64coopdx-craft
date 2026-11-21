@@ -1,4 +1,4 @@
-# SteveCraft 0.4.7-alpha — ambient occlusion, Minecraft footsteps, bundled cube icons
+# SteveCraft 0.4.8-alpha — destructible level terrain, local voxel updates and Minecraft block presentation
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
@@ -93,7 +93,7 @@ Controls:
 | X | Place the selected block at the crosshair target |
 | L + D-pad Left / Right | Select hotbar slot |
 | L + D-pad Up / Down | Raise / lower construction layer |
-| Hold L + B | Mine the targeted placed block |
+| Hold L + B | Mine the targeted placed block or a supported level-terrain surface |
 
 Blocks are temporary and scene-local. Starting a new level, changing area,
 warping, or loading a different save/scene clears all previous placed blocks.
@@ -103,25 +103,29 @@ collision through `load_object_collision_model()`.
 
 ### Current block limitations
 
-- The nine starter block types receive Lua-generated 24-vertex cube display
-  lists with official Java 26.3 textures. A per-face directional shade is
+- The nine starter block types receive Lua-generated cube display lists with
+  official Java 26.3 textures. Shared internal faces are culled. A per-face directional shade is
   multiplied into the vertex colors. Each face vertex averages four AO samples:
   the block facing the face, two side neighbors and the diagonal corner;
   air/transparent samples contribute 1.0 and solid blocks 0.2. Glass is
   treated as transparent. This follows the traditional AO formula documented
   by Mojang's Minecraft rendering presentation. The renderer swaps the existing breakable-
   box GeoLayout display-list pointer per object; it does not modify the APK.
-- This is an isolated renderer prototype, not a chunk mesher: each block still
-  draws six faces, even when faces are hidden against neighboring blocks.
-  The current full-cube breakable-box collision mesh is unchanged.
+- Adjacent SteveCraft blocks omit shared internal faces. A placement/removal
+  refreshes only the changed cell's local 3x3x3 neighborhood. A dirty-region
+  tracker uses 16x16x16 section coordinates; it does not rebuild the whole area.
+  The renderer still uses a separate mesh per unique material/AO pattern rather
+  than one combined chunk mesh. The full-cube breakable-box collision mesh is
+  unchanged.
 - Block PNGs, HUD sprites and OGG samples are embedded by GitHub Actions as a
   Lua Base64 manifest, then written to ModFS through the game's own API. This
   avoids depending on production Lua builds exposing `io.open`.
 - Native action-bank sounds (including Mario footsteps, jumps, landings and
   acrobatics) and the Mario voice bank are muted through `HOOK_ON_PLAY_SOUND`.
   Environmental, object and menu banks are left active. Minecraft step samples
-  are loaded into the SFX channel from ModFS; failed samples are retried rather
-  than permanently marking the audio subsystem unavailable.
+  are loaded as ModAudio samples from ModFS and played through the engine's SFX
+  sample API. No stream-only volume-channel property is assigned. Failed
+  samples are retried rather than permanently marking the audio subsystem unavailable.
 - Footstep detection uses the grounded MarioState floor plus forward/horizontal
   velocity fallback for Android builds that do not expose the expected moving
   action flag. Sample gain is raised to audible SFX levels.
@@ -146,6 +150,35 @@ collision through `load_object_collision_model()`.
 - Friction metadata is not yet connected to Mario movement.
 - Block-state variants, slabs, stairs, fluids, redstone, crafting and mining
   drops are not implemented.
+
+### Destructible level environment (0.4.8-alpha)
+
+- In first person, hold **L + B** while aiming at an ordinary level surface to
+  mine the collision triangle under the crosshair. The surface is deleted using
+  SM64CoopDX's native Lua binding
+  `smlua_collision_delete_surface(surface)`, which removes the triangle from
+  the engine's spatial collision partitions and frees its surface-pool entry.
+- The target is rechecked every frame. The mod snapshots the triangle's type,
+  room, vertices and normal before deletion; it never keeps the invalidated
+  Surface userdata after the C function returns.
+- Destroyed triangles are stored per save slot, level and area. When the engine
+  loads that terrain again, `HOOK_ON_ADD_SURFACE` matches the triangle and
+  marks it intangible before it enters collision partitions. This hook is
+  required for persistence; older builds without it can delete terrain only
+  for the current load.
+- A dark triangular-prism overlay gives the removed collision triangle a
+  visible cavity. This is a rendering mask, not a rewrite of the original
+  level GeoLayout: the vanilla map's original display-list triangle remains
+  underneath it. Visual fidelity varies with level triangle size/tessellation.
+- The mining whitelist only accepts ordinary static terrain types. Dynamic
+  object collision, static-object collision, lava, death planes, water,
+  quicksand, warps, camera triggers and other special surfaces are protected.
+  Terrain mining currently uses a fixed prototype hardness similar to stone;
+  it does not yet read per-material Minecraft hardness or spawn inventory
+  drops for map geometry.
+- This uses the public SM64CoopDX collision-surface API and lifecycle hooks.
+  I could not verify that this is the exact internal method used by Swirly;
+  no source-level implementation was available to compare.
 
 ## First-person hand and custom skins
 
@@ -182,7 +215,9 @@ GitHub Actions checks:
 - Embedded DYNOSBIN byte count/header and ModFS import/URI resolution using a
   mocked ModFS API.
 - Grid coordinate math, inventory accounting, placement/removal, dynamic
-  collision callbacks, temporary scene cleanup, and active-grid chunk limits.
+  collision callbacks, temporary scene cleanup, active-grid chunk limits,
+  16-block section invalidation, safe static-terrain deletion and destroyed-
+  surface persistence encoding.
 - First-person camera setup, camera-ray direction, voxel DDA targeting,
   crosshair/HUD rendering, heart mapping and damage thresholds.
 - Read-only GeoLayout checks against the original actor binary and Java 26.3
