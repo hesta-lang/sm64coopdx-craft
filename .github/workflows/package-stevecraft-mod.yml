@@ -40,17 +40,17 @@ jobs:
       - name: Package binary-only standalone mod
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.2.0-alpha.zip" main.lua README.md actors/minecraft_steve_geo.bin
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.2.1-alpha.zip" main.lua README.md actors/minecraft_steve_geo.bin
 
       - name: Verify package contents
         run: |
-          unzip -l SteveCraft-0.2.0-alpha.zip
-          unzip -p SteveCraft-0.2.0-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
+          unzip -l SteveCraft-0.2.1-alpha.zip
+          unzip -p SteveCraft-0.2.1-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.2.0-alpha
-          path: SteveCraft-0.2.0-alpha.zip
+          name: SteveCraft-0.2.1-alpha
+          path: SteveCraft-0.2.1-alpha.zip
           if-no-files-found: error
           retention-days: 14
