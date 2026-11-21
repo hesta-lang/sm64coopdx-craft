@@ -14,15 +14,8 @@ for _, path in ipairs({
     "textures/gui/sprites/hud/armor_full.png",
     "textures/gui/sprites/hud/armor_half.png",
     "textures/gui/sprites/hud/armor_empty.png",
-    "textures/block/stone.png",
-    "textures/block/dirt.png",
-    "textures/block/grass_block_top.png",
-    "textures/block/oak_planks.png",
-    "textures/block/cobblestone.png",
-    "textures/block/glass.png",
-    "textures/block/bricks.png",
-    "textures/block/sand.png",
-    "textures/block/bedrock.png",
+    "textures/stevecraft/icons/stone.png",
+    "textures/stevecraft/icons/grass_block.png",
 }) do
     allowed[path] = true
 end
@@ -43,6 +36,7 @@ function get_texture_info(uri)
     if path == "textures/gui/sprites/hud/crosshair.png" then width, height = 15, 15 end
     if path:find("heart/", 1, true) then width, height = 9, 9 end
     if path:find("food_", 1, true) or path:find("armor_", 1, true) then width, height = 9, 9 end
+    if path:find("textures/stevecraft/icons/", 1, true) == 1 then width, height = 32, 32 end
     return { texture = { name = path }, width = width, height = height, name = path }
 end
 
@@ -81,10 +75,10 @@ HUD.render({
 assert(requested["textures/gui/sprites/hud/hotbar.png"], "hotbar sprite was not loaded")
 assert(requested["textures/gui/sprites/hud/hotbar_selection.png"], "selection sprite was not loaded")
 assert(requested["textures/gui/sprites/hud/heart/full.png"], "heart sprite was not loaded")
-assert(requested["textures/block/stone.png"], "stone inventory icon was not loaded")
-assert(requested["textures/block/grass_block_top.png"], "grass icon was not loaded")
+assert(requested["textures/stevecraft/icons/stone.png"], "bundled isometric stone icon was not loaded")
+assert(requested["textures/stevecraft/icons/grass_block.png"], "bundled isometric grass icon was not loaded")
 assert(requested["textures/hud/hotbar_selection.png"] ~= true, "obsolete HUD path was requested")
 assert(requested["textures/stevecraft_atlas.png"] ~= true, "missing atlas path was requested")
-assert(draw_calls >= 2, "HUD did not render the 16x16 block icons")
+assert(draw_calls >= 2, "HUD did not render bundled 32x32 block icons")
 assert(requested["textures/gui/sprites/hud/hotbar.png"], "MPOT hotbar was not checked")
-print("PASS: HUD skips MPOT sprites, avoids DJUI errors, and renders pixel block icons")
+print("PASS: HUD skips MPOT sprites and renders bundled isometric 3D block icons")
