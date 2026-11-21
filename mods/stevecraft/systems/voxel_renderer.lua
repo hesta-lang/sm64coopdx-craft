@@ -6,7 +6,8 @@
 local Renderer = {}
 
 local texture_info = {}
-local meshes = {}
+local meshes = {} -- per-object mesh instances; vertex color values encode AO
+local material_meshes = {}
 local object_blocks = {}
 local display_nodes = {}
 local hooks_installed = false
@@ -69,6 +70,16 @@ local BLOCK_TEXTURES = {
     ["minecraft:bedrock"] = { side = "bedrock", top = "bedrock", bottom = "bedrock" },
 }
 
+local FACE_SHADING = {
+    -- Tangent axes and corner order correspond exactly to FACE_LAYOUTS vertices.
+    { n = { 0, 0, 1 }, u = { 1, 0, 0 }, v = { 0, 1, 0 }, corners = { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }, directional = 0.80 },
+    { n = { 0, 0, -1 }, u = { 1, 0, 0 }, v = { 0, 1, 0 }, corners = { { 1, -1 }, { -1, -1 }, { 1, 1 }, { -1, 1 } }, directional = 0.80 },
+    { n = { 0, 1, 0 }, u = { 1, 0, 0 }, v = { 0, 0, 1 }, corners = { { -1, 1 }, { 1, 1 }, { -1, -1 }, { 1, -1 } }, directional = 1.00 },
+    { n = { 0, -1, 0 }, u = { 1, 0, 0 }, v = { 0, 0, 1 }, corners = { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }, directional = 0.50 },
+    { n = { 1, 0, 0 }, u = { 0, 0, 1 }, v = { 0, 1, 0 }, corners = { { 1, -1 }, { -1, -1 }, { 1, 1 }, { -1, 1 } }, directional = 0.60 },
+    { n = { -1, 0, 0 }, u = { 0, 0, 1 }, v = { 0, 1, 0 }, corners = { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }, directional = 0.60 },
+}
+
 local function object_key(object)
     if object == nil then return nil end
     local ok, pointer = pcall(function() return object._pointer end)
@@ -95,7 +106,7 @@ local function texture_for_block(block_id, face)
     return info, width, height
 end
 
-local function set_vertices(vtx, block_id)
+local function set_vertices(vtx, block_id, face_shading)
     local mapping = BLOCK_TEXTURES[block_id]
     if not mapping then return false, "unknown block id" end
 
@@ -119,9 +130,11 @@ local function set_vertices(vtx, block_id)
             vertex.z = position[3]
             vertex.tu = uv[index][1]
             vertex.tv = uv[index][2]
-            vertex.r = 0xFF
-            vertex.g = 0xFF
-            vertex.b = 0xFF
+            local shade = face_shading and face_shading[_] and face_shading[_][index] or 1.0
+            local brightness = math.max(0, math.min(255, math.floor(shade * 255 + 0.5)))
+            vertex.r = brightness
+            vertex.g = brightness
+            vertex.b = brightness
             vertex.a = 0xFF
             vertex_index = vertex_index + 1
         end
@@ -129,7 +142,7 @@ local function set_vertices(vtx, block_id)
     return true
 end
 
-local function build_mesh(block_id)
+local function build_mesh(block_id, face_shading, mesh_key)
     if meshes[block_id] ~= nil then return meshes[block_id] end
     if type(gfx_create) ~= "function" or type(vtx_create) ~= "function"
         or type(gfx_set_command) ~= "function" or type(cast_graph_node) ~= "function"
@@ -140,7 +153,7 @@ local function build_mesh(block_id)
         return nil, "dynamic Gfx/Vtx APIs are unavailable"
     end
 
-    local name = block_id:gsub("[^%w_]", "_")
+    local name = tostring(mesh_key or block_id):gsub("[^%w_]", "_")
     local vtx_name = "stevecraft_voxel_" .. name .. "_vtx"
     local gfx_name = "stevecraft_voxel_" .. name .. "_dl"
 
@@ -152,7 +165,7 @@ local function build_mesh(block_id)
     end
     if vtx == nil then return nil, "could not allocate 24 cube vertices" end
 
-    local vertices_ok, vertices_error = set_vertices(vtx, block_id)
+    local vertices_ok, vertices_error = set_vertices(vtx, block_id, face_shading)
     if not vertices_ok then return nil, vertices_error end
 
     local gfx = type(gfx_get_from_name) == "function" and gfx_get_from_name(gfx_name) or nil
@@ -181,7 +194,7 @@ local function build_mesh(block_id)
     local ok, err = pcall(function()
         require_command("gsSPGeometryMode(G_TEXTURE_GEN | G_CULL_BOTH | G_LIGHTING, 0)")
         require_command("gsDPSetTextureFilter(G_TF_POINT)")
-        require_command("gsDPSetCombineMode(G_CC_DECALRGBA, G_CC_DECALRGBA)")
+        require_command("gsDPSetCombineMode(G_CC_MODULATERGBA, G_CC_MODULATERGBA)")
         require_command("gsSPTexture(0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON)")
         require_command("gsDPSetTile(G_IM_FMT_RGBA, G_IM_SIZ_32b, 0, 0, G_TX_LOADTILE, 0, G_TX_CLAMP, 0, G_TX_NOLOD, G_TX_CLAMP, 0, G_TX_NOLOD)")
         require_command("gsSPVertex(%v, %i, 0)", vtx, 24)
@@ -222,9 +235,72 @@ local function build_mesh(block_id)
         vtx = vtx,
         command_count = command_count,
         vertex_count = 24,
+        block_id = block_id,
+        shade_signature = nil,
     }
-    meshes[block_id] = mesh
     return mesh
+end
+
+local function grid_key(x, y, z)
+    return tostring(x) .. "," .. tostring(y) .. "," .. tostring(z)
+end
+
+local function is_occluding_cell(blocks, x, y, z)
+    local cell = blocks and blocks[grid_key(x, y, z)] or nil
+    if cell == nil then return false end
+    -- Glass is transparent in Minecraft and does not contribute to block AO.
+    return cell.id ~= "minecraft:glass"
+end
+
+local function calculate_face_shading(blocks, x, y, z)
+    local result = {}
+    for face_index, face in ipairs(FACE_SHADING) do
+        local face_values = {}
+        for corner_index, corner in ipairs(face.corners) do
+            local su, sv = corner[1], corner[2]
+            local side_a = is_occluding_cell(
+                blocks,
+                x + face.n[1] + face.u[1] * su,
+                y + face.n[2] + face.u[2] * su,
+                z + face.n[3] + face.u[3] * su
+            )
+            local side_b = is_occluding_cell(
+                blocks,
+                x + face.n[1] + face.v[1] * sv,
+                y + face.n[2] + face.v[2] * sv,
+                z + face.n[3] + face.v[3] * sv
+            )
+            local diagonal = is_occluding_cell(
+                blocks,
+                x + face.n[1] + face.u[1] * su + face.v[1] * sv,
+                y + face.n[2] + face.u[2] * su + face.v[2] * sv,
+                z + face.n[3] + face.u[3] * su + face.v[3] * sv
+            )
+
+            local ao
+            if side_a and side_b then
+                ao = 0.55
+            else
+                local occupied = (side_a and 1 or 0)
+                    + (side_b and 1 or 0)
+                    + (diagonal and 1 or 0)
+                ao = 1.0 - occupied * 0.15
+            end
+            face_values[corner_index] = face.directional * ao
+        end
+        result[face_index] = face_values
+    end
+    return result
+end
+
+local function shading_signature(shading)
+    local parts = {}
+    for face_index = 1, #FACE_SHADING do
+        for corner_index = 1, 4 do
+            parts[#parts + 1] = tostring(math.floor(shading[face_index][corner_index] * 255 + 0.5))
+        end
+    end
+    return table.concat(parts, ",")
 end
 
 local function remember_display_nodes(first_node)
@@ -275,7 +351,7 @@ local function on_before_geo_process(node)
     end
     local object_id = object_key(object)
     local block_id = object_id and object_blocks[object_id] or nil
-    local mesh = block_id and meshes[block_id] or nil
+    local mesh = object_id and meshes[object_id] or nil
 
     if mesh ~= nil then
         record.typed.displayList = mesh.gfx
@@ -293,7 +369,10 @@ end
 
 local function on_object_unload(object)
     local key = object_key(object)
-    if key ~= nil then object_blocks[key] = nil end
+    if key ~= nil then
+        object_blocks[key] = nil
+        meshes[key] = nil
+    end
 end
 
 local function on_level_init()
@@ -323,28 +402,45 @@ function Renderer.install_hooks()
     return true
 end
 
-function Renderer.attach(object, block_id)
+function Renderer.attach(object, block_id, world_blocks)
     local key = object_key(object)
     if key == nil or BLOCK_TEXTURES[block_id] == nil then return false end
 
-    local mesh, err = build_mesh(block_id)
-    if mesh == nil then
-        if not warned[block_id] then
-            print("[SteveCraft] WARNING: voxel renderer disabled for " .. tostring(block_id) .. ": " .. tostring(err))
-            warned[block_id] = true
-        end
-        return false
-    end
-    object_blocks[key] = block_id
+    local x = math.floor((tonumber(object.oPosX) or 0) / 90)
+    local y = math.floor((tonumber(object.oPosY) or 0) / 90)
+    local z = math.floor((tonumber(object.oPosZ) or 0) / 90)
+    local face_shading = calculate_face_shading(world_blocks, x, y, z)
+    local signature = shading_signature(face_shading)
+    local mesh = meshes[key]
 
+    if mesh == nil or mesh.block_id ~= block_id or mesh.shade_signature ~= signature then
+        local err
+        mesh, err = build_mesh(block_id, face_shading, key)
+        if mesh == nil then
+            if not warned[block_id] then
+                print("[SteveCraft] WARNING: voxel renderer disabled for " .. tostring(block_id) .. ": " .. tostring(err))
+                warned[block_id] = true
+            end
+            return false
+        end
+        mesh.shade_signature = signature
+        meshes[key] = mesh
+        material_meshes[block_id] = mesh
+    end
+
+    object_blocks[key] = block_id
     local ok, root = pcall(function() return object.header.gfx.sharedChild end)
     if not ok or root == nil then return false end
     remember_display_nodes(root)
     return true
 end
 
+function Renderer.compute_face_shading(world_blocks, x, y, z)
+    return calculate_face_shading(world_blocks or {}, x, y, z)
+end
+
 function Renderer.get_mesh(block_id)
-    return meshes[block_id]
+    return material_meshes[block_id]
 end
 
 function Renderer.get_attached_block(object)
