@@ -288,20 +288,11 @@ jobs:
             --layout mario_geo \
             --output "$RUNNER_TEMP/stevecraft-rig-audit.json"
 
-      - name: Audit reusable right-hand GeoLayout
-        run: |
-          python tools/stevecraft_rig_audit/inspect_geo.py \
-            --binary mods/stevecraft/actors/minecraft_steve_geo.bin \
-            --layout mario_geo_right_hand \
-            --output "$RUNNER_TEMP/stevecraft-right-hand-audit.json"
-
       - name: Upload Steve rig audit artifacts
         uses: actions/upload-artifact@v4
         with:
           name: SteveCraft-Original-GeoLayout-Rig-Audit
-          path: |
-            ${{ runner.temp }}/stevecraft-rig-audit.json
-            ${{ runner.temp }}/stevecraft-right-hand-audit.json
+          path: ${{ runner.temp }}/stevecraft-rig-audit.json
           if-no-files-found: error
           retention-days: 7
 
