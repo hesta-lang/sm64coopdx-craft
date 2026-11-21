@@ -29,7 +29,7 @@ local affected, sections = Sections.affected_cells(blocks, 8, 8, 8)
 assert(#affected == 4, "only existing blocks inside the 3x3x3 edit halo should be refreshed")
 assert(#sections == 1, "interior edit unexpectedly dirtied multiple sections")
 assert(affected[1].cell ~= nil and affected[1].section_key == "0,0,0")
-assert(Sections.section_key(-1, 0, 0) == "-1,-1,-1",
+assert(Sections.section_key(-1, 0, 0) == "-1,0,0",
     "negative block coordinates must use floor-based section indexing")
 
 print("PASS: Minecraft-style 16x16x16 dirty sections, 3x3x3 local halo and up-to-eight boundary sections")
