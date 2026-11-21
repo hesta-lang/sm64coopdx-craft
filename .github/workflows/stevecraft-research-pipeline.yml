@@ -8,6 +8,9 @@ on:
       - "tools/minecraft_block_data/**"
       - "tests/minecraft_block_data/**"
       - "tools/minecraft_java_runtime_probe/**"
+      - "tools/stevecraft_rig_audit/**"
+      - "tests/stevecraft_rig_audit/**"
+      - "mods/stevecraft/actors/minecraft_steve_geo.bin"
       - ".github/workflows/stevecraft-research-pipeline.yml"
   pull_request:
     branches:
@@ -16,6 +19,9 @@ on:
       - "tools/minecraft_block_data/**"
       - "tests/minecraft_block_data/**"
       - "tools/minecraft_java_runtime_probe/**"
+      - "tools/stevecraft_rig_audit/**"
+      - "tests/stevecraft_rig_audit/**"
+      - "mods/stevecraft/actors/minecraft_steve_geo.bin"
       - ".github/workflows/stevecraft-research-pipeline.yml"
   workflow_dispatch:
     inputs:
@@ -244,5 +250,39 @@ jobs:
         with:
           name: SteveCraft-Minecraft-26.3-Runtime-Block-Registry
           path: ${{ runner.temp }}/minecraft-runtime-block-data.json
+          if-no-files-found: error
+          retention-days: 7
+
+  audit-steve-geometry:
+    name: Audit original Steve GeoLayout without modifying the binary
+    needs:
+      - runtime-registry-extraction
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run read-only GeoLayout tests
+        env:
+          PYTHONPATH: tools/stevecraft_rig_audit
+        run: python -m unittest discover -s tests/stevecraft_rig_audit -v
+
+      - name: Export read-only Steve rig audit
+        run: |
+          python tools/stevecraft_rig_audit/inspect_geo.py \
+            --binary mods/stevecraft/actors/minecraft_steve_geo.bin \
+            --layout mario_geo \
+            --output "$RUNNER_TEMP/stevecraft-rig-audit.json"
+
+      - name: Upload Steve rig audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteveCraft-Original-GeoLayout-Rig-Audit
+          path: ${{ runner.temp }}/stevecraft-rig-audit.json
           if-no-files-found: error
           retention-days: 7
