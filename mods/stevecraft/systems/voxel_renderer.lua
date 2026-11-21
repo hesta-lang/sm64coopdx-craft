@@ -234,7 +234,6 @@ local function build_mesh(block_id, face_shading, mesh_key)
         vtx = vtx,
         command_count = command_count,
         vertex_count = 24,
-        block_id = block_id,
         shade_signature = nil,
     }
     return mesh
