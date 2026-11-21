@@ -411,6 +411,8 @@ local sFirstPersonWarningShown = false
 local sLastMarioHealth = nil
 local sMiningCellKey = nil
 local sMiningFrames = 0
+local update_steve_health
+local ensure_first_person_camera
 
 local function copy_table(source)
     local result = {}
@@ -877,7 +879,7 @@ local function health_to_half_hearts(health)
     return math.max(0, math.min(20, math.floor(fraction * 20 + 0.5)))
 end
 
-local function update_steve_health(m)
+update_steve_health = function(m)
     if m == nil or m.playerIndex ~= 0 or type(m.health) ~= "number" then return end
     local health = m.health
     if sLastMarioHealth ~= nil and health < sLastMarioHealth then
@@ -895,7 +897,7 @@ local function update_steve_health(m)
     sLastMarioHealth = health
 end
 
-local function ensure_first_person_camera(m)
+ensure_first_person_camera = function(m)
     if type(set_first_person_enabled) ~= "function" then
         if not sFirstPersonWarningShown then
             print("[SteveCraft] WARNING: this SM64CoopDX build does not expose first-person camera controls.")
@@ -1275,13 +1277,13 @@ local function render_status_bars(screen_width, screen_height)
     local mario = gMarioStates and gMarioStates[0] or nil
     local health = mario and mario.health or sLastMarioHealth or 0x0880
     local half_hearts = health_to_half_hearts(health)
-    local pixel = 2
-    local icon_width = 14
-    local gap = 3
+    local pixel = 1.5
+    local icon_width = 10.5
+    local gap = 2
     local row_width = 10 * icon_width + 9 * gap
-    local left_x = 18
-    local right_x = math.max(left_x + row_width + 12, screen_width - row_width - 18)
-    local y = screen_height - 82
+    local left_x = 16
+    local right_x = screen_width - row_width - 16
+    local y = screen_height - 76
 
     for heart = 0, 9 do
         local value = math.max(0, math.min(2, half_hearts - heart * 2))
@@ -1297,14 +1299,14 @@ local function render_status_bars(screen_width, screen_height)
     -- has no Minecraft food/armor state to map yet; health is driven by MarioState.
     for icon_index = 0, 9 do
         local x = right_x + icon_index * (icon_width + gap)
-        draw_pixel_icon(
-            FOOD_MASK, x, y, pixel,
-            { 220, 147, 54, 255 }, { 70, 48, 27, 255 }, false
-        )
-        draw_pixel_icon(
-            ARMOR_MASK, left_x + icon_index * (icon_width + gap), y - 18, pixel,
-            { 160, 170, 180, 255 }, { 48, 54, 62, 255 }, false
-        )
+        local food_value = math.max(0, math.min(2, STEVE_HUNGER_POINTS - icon_index * 2))
+        local food_fill = food_value > 0 and { 220, 147, 54, 255 } or { 70, 48, 27, 255 }
+        draw_pixel_icon(FOOD_MASK, x, y, pixel, food_fill, { 70, 48, 27, 255 }, food_value == 1)
+
+        local armor_value = math.max(0, math.min(2, STEVE_ARMOR_POINTS - icon_index * 2))
+        local armor_fill = armor_value > 0 and { 160, 170, 180, 255 } or { 48, 54, 62, 255 }
+        draw_pixel_icon(ARMOR_MASK, left_x + icon_index * (icon_width + gap), y - 16,
+            pixel, armor_fill, { 48, 54, 62, 255 }, armor_value == 1)
     end
 end
 
