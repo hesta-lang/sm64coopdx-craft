@@ -284,3 +284,67 @@ Minecraft sound playback, and runtime skin texture replacement are still not
 implemented in 0.4.1-alpha. Hunger and armor bars remain nonfunctional visual
 indicators; hearts are driven by Mario's health and damage triggers the native
 camera shake callback.
+
+
+## 0.4.2-alpha — duplicate placement, modular systems, official Minecraft assets
+
+### Placement and object lifetime
+
+SM64CoopDX surface objects are created by registering one behavior with
+\`hook_behavior(..., OBJ_LIST_SURFACE, ...)\` and spawning a single object for
+each placed grid cell. The object's loop updates its transformed collision with
+\`load_object_collision_model()\`. The upstream reference implementation is
+the engine's Lua surface-collision example:
+
+- https://github.com/coop-deluxe/sm64coopdx/blob/master/docs/lua/examples/behavior-surface-collisions.lua
+
+\`spawn_sync_object\` is the preferred path because it creates a network-aware
+object. The local \`spawn_non_sync_object\` path is a fallback only for builds
+where the sync API is absent; a nil sync result is not proof that the engine
+did not create the synchronized object. The placement function also guards
+the same grid cell and world key against duplicate attempts within one
+\`gGlobalTimer\` frame. This makes repeated input idempotent for that cell.
+The Android game still needs a multiplayer/device test to confirm object
+ownership and network event ordering.
+
+### Official Minecraft HUD and resources
+
+The package workflow resolves Minecraft Java 26.3 through Mojang's official
+version manifest and asset index:
+https://piston-meta.mojang.com/mc/game/version_manifest_v2.json
+
+The extractor verifies every downloaded resource against the SHA-1 hash in
+that asset index and stores the original HUD sprites, block texture PNGs and
+selected block step/place/break OGG samples under the mod's \`assets/\` folder.
+At runtime, \`systems/assets.lua\` copies them into this mod's ModFS and loads
+the GUI sprites through \`get_texture_info(modfs_uri)\`; audio samples are
+registered by \`systems/sounds.lua\`.
+
+The visible HUD renderer uses the actual Java GUI sprite artwork for hotbar,
+selection, crosshair, hearts, food and armor. Its position/scaling and the
+remaining state behaviour are an SM64CoopDX adaptation, not a byte-for-byte
+port of Minecraft's GUI code. The XP bar is drawn only as a background until
+an XP progression system exists.
+
+The block textures are imported and used for hotbar item icons, but the
+placed cube's display list still uses the SM64 breakable-box placeholder.
+A dedicated cube DynOS actor with the correct six-face texture bindings is
+still required before the in-world blocks visually become Minecraft blocks.
+
+### Split subsystem files
+
+The mod now loads the following independent Lua modules from \`systems/\`:
+
+- \`blocks.lua\`: same-frame placement guard and block-object lifecycle helpers.
+- \`physics.lua\`: friction/ground-contact adapters; this is not yet a complete
+  Minecraft Java movement replacement.
+- \`camera.lua\`: first-person forward vector used by crosshair ray targeting.
+- \`hud.lua\`: source-sprite HUD renderer and normalized Java HUD layout.
+- \`sounds.lua\`: OGG sample registration and block/footstep event router.
+- \`models.lua\`: ModFS URI and custom model resolver helpers.
+- \`assets.lua\`: packaged resource installation and texture resolution.
+
+\`main.lua\` remains the coordinator and retains the existing model-import,
+world-state and Mario proxy code. The split is incremental: the remaining
+engine-facing routines still need to move behind these module interfaces as
+their dependencies are separated and tested.
