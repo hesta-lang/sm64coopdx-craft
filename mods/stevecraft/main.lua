@@ -28,25 +28,27 @@ if type(package) == "table" and type(package.path) == "string" then
     end
 end
 
-local function stevecraft_load_system(module_name, file_name)
+local function stevecraft_load_module(module_name, relative_path)
     local ok, module = pcall(require, module_name)
     if ok and type(module) == "table" then return module end
 
     if type(dofile) == "function" then
-        local fallback_ok, fallback = pcall(dofile, STEVECRAFT_MOD_DIR .. "systems/" .. file_name .. ".lua")
+        local fallback_ok, fallback = pcall(dofile, STEVECRAFT_MOD_DIR .. relative_path .. ".lua")
         if fallback_ok and type(fallback) == "table" then return fallback end
-        error("SteveCraft could not load systems/" .. file_name .. ".lua: " .. tostring(fallback), 0)
+        error("SteveCraft could not load " .. relative_path .. ".lua: " .. tostring(fallback), 0)
     end
     error("SteveCraft could not load Lua module " .. module_name .. ": " .. tostring(module), 0)
 end
 
-local Assets = stevecraft_load_system("systems.assets", "assets")
-local Blocks = stevecraft_load_system("systems.blocks", "blocks")
-local Sounds = stevecraft_load_system("systems.sounds", "sounds")
-local Physics = stevecraft_load_system("systems.physics", "physics")
-local Camera = stevecraft_load_system("systems.camera", "camera")
-local HUD = stevecraft_load_system("systems.hud", "hud")
-local Model = stevecraft_load_system("systems.models", "models")
+-- The gameplay modules are sibling files of main.lua. The asset installer is
+-- the only module in the systems/ subdirectory.
+local Assets = stevecraft_load_module("systems.assets", "systems/assets")
+local Blocks = stevecraft_load_module("blocks", "blocks")
+local Sounds = stevecraft_load_module("sounds", "sounds")
+local Physics = stevecraft_load_module("physics", "physics")
+local Camera = stevecraft_load_module("camera", "camera")
+local HUD = stevecraft_load_module("hud", "hud")
+local Model = stevecraft_load_module("model", "model")
 
 local BLOCK_CATALOG = Blocks.catalog
 local DEFAULT_HOTBAR = Blocks.default_hotbar
