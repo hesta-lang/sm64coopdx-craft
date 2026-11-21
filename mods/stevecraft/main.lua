@@ -42,7 +42,7 @@ end
 
 -- The gameplay modules are sibling files of main.lua. The asset installer is
 -- the only module in the systems/ subdirectory.
-local Assets = stevecraft_load_module("systems.assets", "systems/assets")
+local Assets = stevecraft_load_module("systems/assets", "systems/assets")
 local Blocks = stevecraft_load_module("blocks", "blocks")
 local Sounds = stevecraft_load_module("sounds", "sounds")
 local Physics = stevecraft_load_module("physics", "physics")
