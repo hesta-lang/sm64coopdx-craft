@@ -241,3 +241,45 @@ grid/inventory logic. A successful test cannot substitute for Android
 verification of model scale, collision volume, block placement reach, and
 multiplayer behavior. This is the first dynamic-block prototype, not the final
 Minecraft voxel renderer or Java player-physics port.
+
+
+## 0.4.1-alpha — custom actor registration and first-person hand
+
+### Why the previous model lookup could select the wrong actor
+
+SM64CoopDX's `smlua_model_util_get_id(name)` resolves a GeoLayout name via
+DynOS. DynOS first looks through active levels, registered custom actors and
+loaded actors, then built-in actors. The string `mario_geo` is a built-in
+layout name. If the custom actor has not been added to DynOS, resolving that
+string can return Mario instead of Steve.
+
+A custom actor binary is loaded when DynOS receives its ModFS URI
+(`modfs:/<modPath>/<file>`). Placing a `.bin` in the mod's ordinary ZIP
+directory does not by itself create that ModFS entry. The 0.4.1-alpha loader
+therefore embeds the original DYNOSBIN as base64, imports the decoded bytes to
+`actors/minecraft_steve_geo.bin` in the active ModFS, persists the ModFS, and
+passes its URI to `smlua_model_util_get_id`. It never falls back to
+`mario_geo`; failed registration is retried with a cooldown.
+
+CI checks that the embedded bytes are exactly equal to the original binary
+and that the ModFS import/URI path works against a mocked API. This is not a
+substitute for loading the actor on Android.
+
+### First-person hand extraction
+
+The first-person renderer requests `mario_geo_right_hand` only after the
+Steve actor has been registered. It creates a local non-synchronized object,
+sets its model to that sub-GeoLayout, and positions it from the native
+first-person camera's position, yaw and pitch. The hand uses the actor's own
+display-list/texture data instead of a newly generated mesh. If that
+sub-GeoLayout is missing or cannot be resolved, the renderer leaves the hand
+hidden and logs a warning. Device-level visual validation remains required.
+
+### Remaining gaps
+
+The Minecraft block catalogue's hardness and sound-event identifiers are
+metadata; actual Minecraft textures, block meshes, per-shape collision,
+Minecraft sound playback, and runtime skin texture replacement are still not
+implemented in 0.4.1-alpha. Hunger and armor bars remain nonfunctional visual
+indicators; hearts are driven by Mario's health and damage triggers the native
+camera shake callback.
