@@ -23,15 +23,15 @@ local texture_paths = {
     armor_half = "textures/gui/sprites/hud/armor_half.png",
     armor_empty = "textures/gui/sprites/hud/armor_empty.png",
 
-    block_stone = "textures/block/stone.png",
-    block_dirt = "textures/block/dirt.png",
-    block_grass = "textures/block/grass_block_top.png",
-    block_wood = "textures/block/oak_planks.png",
-    block_cobblestone = "textures/block/cobblestone.png",
-    block_glass = "textures/block/glass.png",
-    block_bricks = "textures/block/bricks.png",
-    block_sand = "textures/block/sand.png",
-    block_bedrock = "textures/block/bedrock.png",
+    block_stone = "textures/stevecraft/icons/stone.png",
+    block_dirt = "textures/stevecraft/icons/dirt.png",
+    block_grass = "textures/stevecraft/icons/grass_block.png",
+    block_wood = "textures/stevecraft/icons/oak_planks.png",
+    block_cobblestone = "textures/stevecraft/icons/cobblestone.png",
+    block_glass = "textures/stevecraft/icons/glass.png",
+    block_bricks = "textures/stevecraft/icons/bricks.png",
+    block_sand = "textures/stevecraft/icons/sand.png",
+    block_bedrock = "textures/stevecraft/icons/bedrock.png",
 }
 
 local hud_tiles = {
@@ -104,6 +104,15 @@ local function render_tile(tile_name, x, y, scale)
     return render_texture(texture, x, y, target_size / width, target_size / height)
 end
 
+local function render_block_icon(tile_name, x, y, scale)
+    local texture = textures[tile_name]
+    if texture == nil then return false end
+    local width = math.max(1, tonumber(texture.width) or 32)
+    local height = math.max(1, tonumber(texture.height) or 32)
+    local target_size = 20 * (scale or 1)
+    return render_texture(texture, x, y, target_size / width, target_size / height)
+end
+
 local function rect(x, y, w, h, r, g, b, a)
     if type(djui_hud_set_color) ~= "function" or type(djui_hud_render_rect) ~= "function" then return end
     djui_hud_set_color(r, g, b, a or 255)
@@ -166,9 +175,9 @@ function HUD.render(context)
     render_meter_row("heart", context.health_points or 20, 4, meter_y, icon_scale)
     render_meter_row("food", context.hunger_points or 20, screen_width - row_width - 4, meter_y, icon_scale)
 
-    local hotbar_scale = math.max(0.72, math.min(1.0, (screen_width - 24) / 256))
+    local hotbar_scale = math.max(0.90, math.min(1.20, (screen_width - 18) / 232))
     local hotbar_x = (screen_width - 184 * hotbar_scale) * 0.5
-    local hotbar_y = screen_height - 27 * hotbar_scale - 12
+    local hotbar_y = screen_height - 27 * hotbar_scale - 10
     -- Procedural pixel bar: unlike the original 182x22 PNG, all HUD geometry
     -- is independent of MPOT textures and cannot trigger DJUI's texture error.
     rect(hotbar_x, hotbar_y, 184 * hotbar_scale, 27 * hotbar_scale, 5, 5, 5, 245)
@@ -192,21 +201,15 @@ function HUD.render(context)
         local item = inventory[slot]
         if item and item.id then
             local icon = block_tiles[item.id]
-            -- Minecraft-like miniature cube: dark extrusion on the right and
-            -- bottom, with the original 16x16 pixel texture as the front face.
-            local icon_x = slot_x + 1 * hotbar_scale
-            local icon_y = slot_y + 1 * hotbar_scale
-            if not render_tile(icon, icon_x, icon_y, hotbar_scale) then
-                rect(icon_x + 2 * hotbar_scale, icon_y + 2 * hotbar_scale,
-                    12 * hotbar_scale, 12 * hotbar_scale, 130, 130, 130, 255)
+            -- Dedicated 32x32 isometric icon, generated from this block's
+            -- official top/side textures and bundled inside the mod.
+            local icon_x = slot_x - 1 * hotbar_scale
+            local icon_y = slot_y - 1 * hotbar_scale
+            if not render_block_icon(icon, icon_x, icon_y, hotbar_scale) then
+                rect(icon_x + 3 * hotbar_scale, icon_y + 3 * hotbar_scale,
+                    14 * hotbar_scale, 14 * hotbar_scale, 130, 130, 130, 255)
             end
-            -- Draw extrusion after the front texture so the shaded right and
-            -- lower edges remain visible, like a tiny Minecraft inventory cube.
-            rect(icon_x + 14 * hotbar_scale, icon_y + 2 * hotbar_scale,
-                2 * hotbar_scale, 13 * hotbar_scale, 20, 20, 20, 255)
-            rect(icon_x + 2 * hotbar_scale, icon_y + 14 * hotbar_scale,
-                14 * hotbar_scale, 2 * hotbar_scale, 28, 28, 28, 255)
-            text(item.count or 0, slot_x + 11 * hotbar_scale, slot_y + 12 * hotbar_scale, 0.42 * hotbar_scale)
+            text(item.count or 0, slot_x + 12 * hotbar_scale, slot_y + 13 * hotbar_scale, 0.46 * hotbar_scale)
         end
     end
 
@@ -214,8 +217,8 @@ function HUD.render(context)
     if selected and selected.id and context.catalog and context.catalog[selected.id] then
         local name = context.catalog[selected.id].name or selected.id
         text(name .. "  Y " .. tostring(context.height_offset or 0),
-            math.max(4, (screen_width - #name * 5) * 0.5),
-            hotbar_y - 13, 0.55)
+            math.max(4, (screen_width - #name * 5.5) * 0.5),
+            hotbar_y - 15, 0.62)
     end
 
     if context.mining_frames and context.mining_frames > 0
