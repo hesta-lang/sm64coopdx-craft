@@ -2640,7 +2640,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
     }
     __STEVECRAFT_TEST.constants = __STEVECRAFT_TEST.animation_constants
     __STEVECRAFT_TEST.model = {
-        decode_actor_binary = decode_steve_geo_base64,
+        get_actor_binary = get_steve_geo_binary,
         ensure_actor_in_modfs = ensure_steve_actor_in_modfs,
         load_actor = load_steve_model,
         expected_binary_size = STEVE_GEO_BINARY_SIZE,
