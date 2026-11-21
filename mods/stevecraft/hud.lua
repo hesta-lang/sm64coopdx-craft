@@ -146,7 +146,8 @@ end
 
 function HUD.render(context)
     context = context or {}
-    if not context.inventory_loaded then return end
+    -- Always draw the frame, even while save-slot inventory data is loading.
+    -- main.lua initializes the inventory from the HUD hook before passing it.
     load_textures()
 
     if type(djui_hud_set_resolution) == "function" and type(RESOLUTION_DJUI) == "number" then
