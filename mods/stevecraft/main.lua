@@ -531,10 +531,27 @@ local function inventory_consume_selected()
     return entry.id
 end
 
-local function inventory_add_block(block_id, amount)
+local function inventory_can_add_block(block_id, amount)
     ensure_inventory_loaded()
     amount = amount or 1
     if not BLOCK_CATALOG[block_id] or amount <= 0 then return false end
+    local available = 0
+    for slot = 1, INVENTORY_SIZE do
+        local entry = sInventory[slot]
+        if entry and entry.id == block_id then
+            available = available + (INVENTORY_MAX_STACK - entry.count)
+        elseif entry and entry.count == 0 then
+            available = available + INVENTORY_MAX_STACK
+        end
+        if available >= amount then return true end
+    end
+    return false
+end
+
+local function inventory_add_block(block_id, amount)
+    ensure_inventory_loaded()
+    amount = amount or 1
+    if not inventory_can_add_block(block_id, amount) then return false end
 
     for slot = 1, INVENTORY_SIZE do
         local entry = sInventory[slot]
@@ -712,7 +729,7 @@ end
 local function deactivate_world_objects()
     for _, cell in pairs(sWorldBlocks) do
         local object = cell.object
-        if object and type(object) == "table" and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
+        if object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
             pcall(function() object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
         end
     end
@@ -802,6 +819,9 @@ local function remove_grid_block(x, y, z)
     local definition = BLOCK_CATALOG[cell.id]
     if not definition or definition.destroy_speed < 0 then
         return false, "unbreakable"
+    end
+    if not inventory_can_add_block(cell.id, 1) then
+        return false, "inventory_full"
     end
 
     if cell.object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
@@ -938,6 +958,9 @@ local function on_warp()
     sModelAppliedObject = nil
     sLastSteveState = nil
     sCurrentSteveAnimation = nil
+    deactivate_world_objects()
+    sCurrentWorldKey = nil
+    sCurrentWorldPrefix = nil
 end
 
 
@@ -965,6 +988,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         cell_center = cell_center,
         compute_target_cell = compute_target_cell,
         inventory_add_block = inventory_add_block,
+        inventory_can_add_block = inventory_can_add_block,
         select_inventory_slot = select_inventory_slot,
         ensure_inventory_loaded = ensure_inventory_loaded,
         ensure_world_loaded = ensure_world_loaded,
