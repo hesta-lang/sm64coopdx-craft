@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hesta-lang/sm64coopdx-craft/blob/stevecraft-normal-mod-alpha/tools/minecraft_block_data/block-data.schema.json",
+  "title": "SteveCraft Minecraft Java block resource index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "minecraft_version", "source", "coverage", "blocks", "models", "block_tags", "recipes", "sound_events"],
+  "properties": {
+    "format_version": { "const": "1.0.0" },
+    "minecraft_version": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sha1"],
+      "properties": {
+        "kind": { "const": "official_client_jar" },
+        "sha1": { "type": "string", "pattern": "^[a-fA-F0-9]{40}$" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockstate_resource_count", "block_model_resource_count", "block_tag_count", "recipe_resource_count", "sound_event_count", "registry_complete", "runtime_required_fields", "note"],
+      "properties": {
+        "blockstate_resource_count": { "type": "integer", "minimum": 0 },
+        "block_model_resource_count": { "type": "integer", "minimum": 0 },
+        "block_tag_count": { "type": "integer", "minimum": 0 },
+        "recipe_resource_count": { "type": "integer", "minimum": 0 },
+        "sound_event_count": { "type": "integer", "minimum": 0 },
+        "registry_complete": { "const": false },
+        "runtime_required_fields": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "blockstate", "model_ids", "resource_flags", "runtime_properties"],
+        "properties": {
+          "id": { "$ref": "#/$defs/namespacedId" },
+          "blockstate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variants", "multipart"],
+            "properties": {
+              "variants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["selector", "properties", "models"],
+                  "properties": {
+                    "selector": { "type": "string" },
+                    "properties": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "models": { "$ref": "#/$defs/modelApplications" }
+                  }
+                }
+              },
+              "multipart": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["when", "models"],
+                  "properties": {
+                    "when": {},
+                    "models": { "$ref": "#/$defs/modelApplications" }
+                  }
+                }
+              }
+            }
+          },
+          "model_ids": { "type": "array", "items": { "$ref": "#/$defs/namespacedId" }, "uniqueItems": true },
+          "resource_flags": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["loot_table_id"],
+            "properties": {
+              "loot_table_id": { "anyOf": [{ "$ref": "#/$defs/namespacedId" }, { "type": "null" }] }
+            }
+          },
+          "runtime_properties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["destroy_speed", "explosion_resistance", "friction", "collision_shapes", "occlusion_shapes", "fluid_state", "light_emission", "redstone_properties", "status"],
+            "properties": {
+              "destroy_speed": { "type": "null" },
+              "explosion_resistance": { "type": "null" },
+              "friction": { "type": "null" },
+              "collision_shapes": { "type": "null" },
+              "occlusion_shapes": { "type": "null" },
+              "fluid_state": { "type": "null" },
+              "light_emission": { "type": "null" },
+              "redstone_properties": { "type": "null" },
+              "status": { "const": "requires_java_runtime" }
+            }
+          }
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "parent", "texture_slots", "elements", "resource_found"],
+        "properties": {
+          "id": { "$ref": "#/$defs/namespacedId" },
+          "parent": { "anyOf": [{ "$ref": "#/$defs/namespacedId" }, { "type": "null" }] },
+          "texture_slots": { "type": "object" },
+          "elements": { "type": "array", "items": { "type": "object" } },
+          "resource_found": { "type": "boolean" }
+        }
+      }
+    },
+    "block_tags": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+    "recipes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "ingredient_ids", "result_id", "result_count"],
+        "properties": {
+          "id": { "$ref": "#/$defs/namespacedId" },
+          "type": { "type": ["string", "null"] },
+          "ingredient_ids": { "type": "array", "items": { "$ref": "#/$defs/namespacedId" }, "uniqueItems": true },
+          "result_id": { "anyOf": [{ "$ref": "#/$defs/namespacedId" }, { "type": "null" }] },
+          "result_count": { "type": ["integer", "number"], "minimum": 0 }
+        }
+      }
+    },
+    "sound_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "sound_count"],
+        "properties": {
+          "id": { "$ref": "#/$defs/namespacedId" },
+          "sound_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "namespacedId": { "type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$" },
+    "modelApplications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["model_id", "x", "y", "z", "uvlock", "weight"],
+        "properties": {
+          "model_id": { "$ref": "#/$defs/namespacedId" },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "z": { "type": "number" },
+          "uvlock": { "type": "boolean" },
+          "weight": { "type": "number", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
