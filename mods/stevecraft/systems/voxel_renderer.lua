@@ -12,6 +12,7 @@ local material_meshes = {}
 local object_blocks = {}
 local object_ready = {}
 local surface_masks = {}
+local surface_mask_mesh_cache = {}
 local display_nodes = {}
 local hooks_installed = false
 local warned = {}
@@ -566,6 +567,7 @@ local function on_level_init()
     object_blocks = {}
     object_ready = {}
     surface_masks = {}
+    surface_mask_mesh_cache = {}
     meshes = {}
     mesh_cache = {}
     material_meshes = {}
@@ -650,8 +652,12 @@ function Renderer.attach_surface_mask(object, snapshot)
     end
 
     local mesh_key = signature:gsub("[^%w_]", "_")
-    local mesh = build_surface_mask_mesh(mesh_key, snapshot)
-    if mesh == nil then return false end
+    local mesh = surface_mask_mesh_cache[signature]
+    if mesh == nil then
+        mesh = build_surface_mask_mesh(mesh_key, snapshot)
+        if mesh == nil then return false end
+        surface_mask_mesh_cache[signature] = mesh
+    end
 
     meshes[key] = mesh
     object_blocks[key] = "stevecraft:terrain_hole"
