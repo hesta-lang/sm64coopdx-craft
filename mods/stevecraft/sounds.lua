@@ -5,6 +5,7 @@
 local Sounds = {}
 local samples = {}
 local attempted = false
+local SAMPLE_COUNT = 6
 
 local sample_files = {
     stone_step = "sounds/stone_step.ogg",
@@ -47,7 +48,7 @@ function Sounds.load()
             print("[SteveCraft] WARNING: couldn't load sound " .. path .. ": " .. tostring(sample))
         end
     end
-    print("[SteveCraft] Loaded " .. tostring(loaded) .. "/" .. tostring(#sample_files) .. " original sound samples.")
+    print("[SteveCraft] Loaded " .. tostring(loaded) .. "/" .. tostring(SAMPLE_COUNT) .. " original sound samples.")
     return loaded > 0
 end
 
@@ -60,15 +61,13 @@ function Sounds.play(name, position, volume)
 end
 
 function Sounds.play_place(block_id, position)
-    local definition = block_id and require("blocks").catalog[block_id] or nil
-    local material = definition and definition.place_sound or "stone"
-    return Sounds.play("block_place", position, material == "glass" and 0.45 or 0.7)
+    local volume = block_id == "minecraft:glass" and 0.45 or 0.7
+    return Sounds.play("block_place", position, volume)
 end
 
 function Sounds.play_break(block_id, position)
-    local definition = block_id and require("blocks").catalog[block_id] or nil
-    local material = definition and definition.break_sound or "stone"
-    return Sounds.play("block_break", position, material == "glass" and 0.8 or 0.9)
+    local volume = block_id == "minecraft:glass" and 0.8 or 0.9
+    return Sounds.play("block_break", position, volume)
 end
 
 function Sounds.play_footstep(material, position, volume)
