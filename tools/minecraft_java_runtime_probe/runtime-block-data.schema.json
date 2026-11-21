@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SteveCraft Minecraft Java runtime block registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "minecraft_version", "source", "coverage", "blocks"],
+  "properties": {
+    "format_version": { "const": "1.0.0" },
+    "minecraft_version": { "const": "26.3" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "fabric_loader_version", "runtime"],
+      "properties": {
+        "kind": { "const": "fabric_server_runtime" },
+        "fabric_loader_version": { "type": "string" },
+        "runtime": { "const": "dedicated_server" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_registry_entries", "block_state_entries", "all_registry_blocks_seen", "collision_shape_context", "collision_shapes_are_universal", "note"],
+      "properties": {
+        "block_registry_entries": { "type": "integer", "minimum": 1 },
+        "block_state_entries": { "type": "integer", "minimum": 1 },
+        "all_registry_blocks_seen": { "const": true },
+        "collision_shape_context": { "type": "string" },
+        "collision_shapes_are_universal": { "const": false },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "block_properties", "states"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "block_properties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["explosion_resistance", "friction", "speed_factor", "jump_factor", "bounce_restitution", "fall_distance_reduction", "dynamic_shape", "has_collision", "sounds"],
+            "properties": {
+              "explosion_resistance": { "type": "number" },
+              "friction": { "type": "number" },
+              "speed_factor": { "type": "number" },
+              "jump_factor": { "type": "number" },
+              "bounce_restitution": { "type": "number" },
+              "fall_distance_reduction": { "type": "number" },
+              "dynamic_shape": { "type": "boolean" },
+              "has_collision": { "type": "boolean" },
+              "sounds": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["volume", "pitch", "break", "step", "place", "hit", "fall"],
+                "properties": {
+                  "volume": { "type": "number" },
+                  "pitch": { "type": "number" },
+                  "break": { "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }] },
+                  "step": { "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }] },
+                  "place": { "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }] },
+                  "hit": { "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }] },
+                  "fall": { "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }] }
+                }
+              }
+            }
+          },
+          "states": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["properties", "is_default", "runtime"],
+              "properties": {
+                "properties": { "type": "object", "additionalProperties": { "type": "string" } },
+                "is_default": { "type": "boolean" },
+                "runtime": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["destroy_speed", "light_emission", "light_dampening", "fluid_id", "fluid_empty", "is_air", "is_randomly_ticking", "requires_correct_tool_for_drops", "is_signal_source", "redstone", "collision_shape_boxes", "outline_shape_boxes", "occlusion_shape_boxes", "shape_context"],
+                  "properties": {
+                    "destroy_speed": { "type": "number" },
+                    "light_emission": { "type": "integer" },
+                    "light_dampening": { "type": "integer" },
+                    "fluid_id": { "$ref": "#/$defs/identifier" },
+                    "fluid_empty": { "type": "boolean" },
+                    "is_air": { "type": "boolean" },
+                    "is_randomly_ticking": { "type": "boolean" },
+                    "requires_correct_tool_for_drops": { "type": "boolean" },
+                    "is_signal_source": { "type": "boolean" },
+                    "redstone": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["sampled_conductor", "sampled_signal_up", "sampled_analog_signal_up", "context"],
+                      "properties": {
+                        "sampled_conductor": { "type": "boolean" },
+                        "sampled_signal_up": { "type": "integer" },
+                        "sampled_analog_signal_up": { "type": "integer" },
+                        "context": { "type": "string" }
+                      }
+                    },
+                    "collision_shape_boxes": { "$ref": "#/$defs/boxes" },
+                    "outline_shape_boxes": { "$ref": "#/$defs/boxes" },
+                    "occlusion_shape_boxes": { "$ref": "#/$defs/boxes" },
+                    "shape_context": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$" },
+    "boxes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["min_x", "min_y", "min_z", "max_x", "max_y", "max_z"],
+        "properties": {
+          "min_x": { "type": "number" },
+          "min_y": { "type": "number" },
+          "min_z": { "type": "number" },
+          "max_x": { "type": "number" },
+          "max_y": { "type": "number" },
+          "max_z": { "type": "number" }
+        }
+      }
+    }
+  }
+}
