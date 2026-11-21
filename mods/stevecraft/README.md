@@ -105,9 +105,11 @@ collision through `load_object_collision_model()`.
 
 - The nine starter block types receive Lua-generated 24-vertex cube display
   lists with official Java 26.3 textures. A per-face directional shade is
-  multiplied into the vertex colors, and each cube corner receives a local
-  voxel ambient-occlusion value based on nearby opaque SteveCraft blocks.
-  Glass is treated as non-occluding. The renderer swaps the existing breakable-
+  multiplied into the vertex colors. Each face vertex averages four AO samples:
+  the block facing the face, two side neighbors and the diagonal corner;
+  air/transparent samples contribute 1.0 and solid blocks 0.2. Glass is
+  treated as transparent. This follows the traditional AO formula documented
+  by Mojang's Minecraft rendering presentation. The renderer swaps the existing breakable-
   box GeoLayout display-list pointer per object; it does not modify the APK.
 - This is an isolated renderer prototype, not a chunk mesher: each block still
   draws six faces, even when faces are hidden against neighboring blocks.
@@ -187,7 +189,8 @@ GitHub Actions checks:
   block resource/runtime metadata.
 
 The shading is a local voxel approximation: it implements face-direction brightness
-and corner occlusion, not Minecraft's full lightmap propagation or a global
+and Minecraft's four-sample corner AO, not the full 0–15 sky/block light
+volumes, flood-fill propagation, dynamic brightness texture or global
 shadow-map system. It is intentionally limited to placed SteveCraft blocks so
 it does not change lighting across the original SM64 level.
 
