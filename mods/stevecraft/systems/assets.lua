@@ -25,7 +25,7 @@ function M.get_uri(path)
     if type(path) ~= "string" or path == "" then return nil end
     local modfs = resolve_modfs()
     if modfs == nil or type(MOD_FS_URI_FORMAT) ~= "string" then return nil end
-    local relative = path:gsub("\\\\", "/"):gsub("^/+", "")
+    local relative = path:gsub("\\", "/"):gsub("^/+", "")
     if relative:sub(1, 7) ~= "assets/" then
         relative = "assets/" .. relative
     end
