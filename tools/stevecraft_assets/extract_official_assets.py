@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import hashlib
 import urllib.request
-import zipfile
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 HUD_TEXTURES = [
@@ -74,7 +74,11 @@ def download_index_asset(index: dict, key: str) -> bytes:
     if entry is None:
         raise KeyError(f"Asset not found in official version index: {key}")
     digest = entry["hash"]
-    return fetch_bytes(f"https://resources.download.minecraft.net/{digest[:2]}/{digest}")
+    data = fetch_bytes(f"https://resources.download.minecraft.net/{digest[:2]}/{digest}")
+    actual = hashlib.sha1(data).hexdigest()
+    if actual != digest:
+        raise ValueError(f"SHA-1 mismatch for {key}: expected {digest}, got {actual}")
+    return data
 
 def write_asset(root: pathlib.Path, relative: str, data: bytes):
     destination = root / relative
