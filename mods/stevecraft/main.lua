@@ -934,16 +934,19 @@ local function get_terrain_mining_target(m)
 
     if Camera.is_active() then
         local origin, direction = Camera.get_ray(m)
-        if origin ~= nil and direction ~= nil then
-            local hit = get_world_surface_hit(origin, direction)
-            if hit ~= nil and hit.surface ~= nil then
-                local allowed, reason = Terrain.is_mineable_surface(hit.surface)
-                if allowed then return hit.surface, hit.hitPos end
-                return nil, nil, reason
-            end
+        if origin == nil or direction == nil then
+            return nil, nil, "camera_ray_unavailable"
         end
+        local hit = get_world_surface_hit(origin, direction)
+        if hit == nil or hit.surface == nil then
+            return nil, nil, "no_surface_in_crosshair"
+        end
+        local allowed, reason = Terrain.is_mineable_surface(hit.surface)
+        if allowed then return hit.surface, hit.hitPos end
+        return nil, nil, reason
     end
 
+    -- Non-first-person fallback mines only the surface Mario is standing on.
     local floor_surface = m.floor
     local allowed, reason = Terrain.is_mineable_surface(floor_surface)
     if allowed then return floor_surface, m.pos end
