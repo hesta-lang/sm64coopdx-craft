@@ -55,24 +55,25 @@ function Terrain.is_mineable_surface(surface)
     -- Only ordinary solid terrain can be mined. Keep lava, death planes,
     -- water, quicksand, warps, camera triggers, switches, vines and other
     -- gameplay-control surfaces intact so mining cannot break level logic.
-    local safe_types = {
-        type(SURFACE_DEFAULT) == "number" and SURFACE_DEFAULT or 0,
-        SURFACE_VERY_SLIPPERY,
-        SURFACE_SLIPPERY,
-        SURFACE_NOT_SLIPPERY,
-        SURFACE_NOISE_DEFAULT,
-        SURFACE_NOISE_SLIPPERY,
-        SURFACE_NOISE_VERY_SLIPPERY,
-        SURFACE_ICE,
-        SURFACE_HARD,
-        SURFACE_HARD_SLIPPERY,
-        SURFACE_HARD_VERY_SLIPPERY,
-        SURFACE_HARD_NOT_SLIPPERY,
-    }
+    local safe_types = {}
+    local function add_safe_type(value)
+        if type(value) == "number" then safe_types[#safe_types + 1] = value end
+    end
+    add_safe_type(SURFACE_DEFAULT)
+    add_safe_type(SURFACE_VERY_SLIPPERY)
+    add_safe_type(SURFACE_SLIPPERY)
+    add_safe_type(SURFACE_NOT_SLIPPERY)
+    add_safe_type(SURFACE_NOISE_DEFAULT)
+    add_safe_type(SURFACE_NOISE_SLIPPERY)
+    add_safe_type(SURFACE_NOISE_VERY_SLIPPERY)
+    add_safe_type(SURFACE_ICE)
+    add_safe_type(SURFACE_HARD)
+    add_safe_type(SURFACE_HARD_SLIPPERY)
+    add_safe_type(SURFACE_HARD_VERY_SLIPPERY)
+    add_safe_type(SURFACE_HARD_NOT_SLIPPERY)
+    if #safe_types == 0 then add_safe_type(0) end
     for _, safe_type in ipairs(safe_types) do
-        if type(safe_type) == "number" and type_id == safe_type then
-            return true
-        end
+        if type_id == safe_type then return true end
     end
     return false, "protected_surface_type"
 end
