@@ -6,7 +6,8 @@ on:
       - android
       - stevecraft-normal-mod-alpha
     paths:
-      - "mods/stevecraft/actors/steve_geo.bin"
+      - "mods/stevecraft/actors/minecraft_steve_geo.bin"
+      - "mods/stevecraft/main.lua"
   workflow_dispatch:
 
 permissions:
@@ -26,10 +27,10 @@ jobs:
 
       - name: Validate precompiled DynOS actor
         run: |
-          ACTOR="mods/stevecraft/actors/steve_geo.bin"
+          ACTOR="mods/stevecraft/actors/minecraft_steve_geo.bin"
           test -s "$ACTOR"
           test "$(head -c 8 "$ACTOR")" = "DYNOSBIN"
-          EXTRA_FILES="$(find mods/stevecraft/actors -type f ! -name 'steve_geo.bin' ! -name 'README.md' -print)"
+          EXTRA_FILES="$(find mods/stevecraft/actors -type f ! -name 'minecraft_steve_geo.bin' ! -name 'README.md' -print)"
           test -z "$EXTRA_FILES"
           echo "Precompiled actor present: $(wc -c < "$ACTOR") bytes"
 
@@ -39,7 +40,7 @@ jobs:
       - name: Package binary-only standalone mod
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.2.0-alpha.zip" main.lua README.md actors/steve_geo.bin
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.2.0-alpha.zip" main.lua README.md actors/minecraft_steve_geo.bin
 
       - name: Verify package contents
         run: |
