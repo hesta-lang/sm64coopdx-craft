@@ -188,12 +188,15 @@ local function test_bedrock_and_full_inventory()
     assert(find_cell(1, 0, 0) ~= nil, "bedrock was removed")
     assert(state().inventory[9].count == 63, "bedrock count changed after failed break")
 
-    -- Fill the remaining bedrock stack, then prove that a full inventory prevents removal.
-    assert(build.inventory_add_block("minecraft:bedrock", 1) == true)
-    assert(state().inventory[9].count == 64)
-    ok, reason = build.remove_grid_block(1, 0, 0)
+    -- A breakable block cannot be removed when its matching stack is already full.
+    build.select_inventory_slot(1)
+    assert(build.place_grid_block(2, 0, 0) == true)
+    assert(state().inventory[1].count == 63)
+    assert(build.inventory_add_block("minecraft:stone", 1) == true)
+    assert(state().inventory[1].count == 64)
+    ok, reason = build.remove_grid_block(2, 0, 0)
     assert(ok == false and reason == "inventory_full")
-    assert(find_cell(1, 0, 0) ~= nil, "block disappeared despite full inventory")
+    assert(find_cell(2, 0, 0) ~= nil, "block disappeared despite full inventory")
     print("PASS: unbreakable bedrock and no item loss when inventory is full")
 end
 
@@ -277,7 +280,9 @@ local function test_per_area_persistence_and_chunk_limits()
     gNetworkPlayers[0].currAreaIndex = 1
     assert(build.ensure_world_loaded() == true)
     assert(state().world_key == "1_1_1")
-    assert(state().block_count == 0)
+    assert(state().block_count == 2)
+    assert(find_cell(1, 0, 0).id == "minecraft:bedrock")
+    assert(find_cell(2, 0, 0).id == "minecraft:stone")
     print("PASS: per-area persistence, reload, cleanup, and bounded storage chunks")
 end
 
