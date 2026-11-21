@@ -1,0 +1,334 @@
+local storage = {}
+local spawned = {}
+local hooks = {}
+local behavior = nil
+local collision_calls = 0
+local hud_lines = {}
+
+local function copy(source)
+    local result = {}
+    for k, v in pairs(source) do result[k] = v end
+    return result
+end
+
+-- SM64CoopDX constants and callbacks mocked for deterministic Lua 5.4 tests.
+ACT_FLAG_SWIMMING = 1 << 0
+ACT_FLAG_AIR = 1 << 1
+ACT_FLAG_MOVING = 1 << 2
+E_MODEL_ERROR_MODEL = -1
+E_MODEL_BREAKABLE_BOX = 123
+OBJ_LIST_SURFACE = 9
+OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE = 1
+ACTIVE_FLAG_DEACTIVATED = 0x20
+A_BUTTON = 1 << 4
+B_BUTTON = 1 << 5
+L_TRIG = 1 << 6
+L_JPAD = 1 << 7
+R_JPAD = 1 << 8
+U_JPAD = 1 << 9
+D_JPAD = 1 << 10
+RESOLUTION_N64 = 1
+FONT_NORMAL = 1
+
+gNetworkPlayers = {
+    [0] = { currLevelNum = 1, currAreaIndex = 1 },
+}
+gCurrLevelNum = 1
+gCurrAreaIndex = 1
+gGlobalObjectCollisionData = {
+    breakable_box_seg8_collision_08012D70 = 777,
+}
+
+function get_current_save_file_num()
+    return 1
+end
+
+function mod_storage_save(key, value)
+    storage[key] = tostring(value)
+    return true
+end
+
+function mod_storage_load(key, default_value)
+    local value = storage[key]
+    if value == nil then return default_value end
+    return value
+end
+
+function mod_storage_load_all()
+    return copy(storage)
+end
+
+function mod_storage_remove(key)
+    storage[key] = nil
+    return true
+end
+
+function hook_behavior(_, object_list, synchronized, init_callback, loop_callback)
+    assert(object_list == OBJ_LIST_SURFACE, "block behavior must live in the surface object list")
+    assert(synchronized == true, "grid behavior must be eligible for network synchronization")
+    behavior = { init = init_callback, loop = loop_callback }
+    return 900
+end
+
+function spawn_sync_object(behavior_id, model_id, x, y, z, initialize)
+    assert(behavior_id == 900, "unexpected behavior ID")
+    assert(model_id == E_MODEL_BREAKABLE_BOX, "unexpected block placeholder model")
+    local object = {
+        oPosX = x, oPosY = y, oPosZ = z,
+        activeFlags = 1,
+    }
+    if initialize then initialize(object) end
+    behavior.init(object)
+    spawned[#spawned + 1] = object
+    return object
+end
+
+function spawn_non_sync_object(...)
+    error("non-sync fallback should not be used when sync spawn succeeds")
+end
+
+function obj_scale(object, scale)
+    object.scale = scale
+end
+
+function load_object_collision_model()
+    collision_calls = collision_calls + 1
+end
+
+function djui_hud_set_resolution() end
+function djui_hud_set_font() end
+function djui_hud_set_color() end
+function djui_hud_measure_text(value) return #value * 8 end
+function djui_hud_print_text(value)
+    hud_lines[#hud_lines + 1] = value
+end
+
+_G.__STEVECRAFT_TEST = {}
+dofile("mods/stevecraft/main.lua")
+
+local animation = __STEVECRAFT_TEST.build_animation
+local build = __STEVECRAFT_TEST.build_system
+assert(type(animation) == "function", "animation generator export missing")
+assert(type(build) == "table", "build system export missing")
+assert(type(behavior) == "table", "custom surface behavior was not registered")
+
+local function state()
+    return build.get_build_system_state()
+end
+
+local function find_cell(x, y, z)
+    return state().blocks[tostring(x) .. "," .. tostring(y) .. "," .. tostring(z)]
+end
+
+local function test_catalog()
+    local catalog = build.catalog
+    assert(catalog["minecraft:stone"].destroy_speed == 1.5)
+    assert(catalog["minecraft:stone"].explosion_resistance == 6.0)
+    assert(catalog["minecraft:glass"].destroy_speed == 0.3)
+    assert(catalog["minecraft:bedrock"].destroy_speed == -1.0)
+    assert(catalog["minecraft:bedrock"].explosion_resistance == 3600000.0)
+    assert(#build.default_hotbar == 9)
+    assert(build.constants.inventory_size == 9)
+    assert(build.constants.max_stack == 64)
+    print("PASS: Java 26.3 block catalogue and hotbar metadata")
+end
+
+local function test_grid_math()
+    local x, y, z = build.cell_center(1, 2, -1)
+    assert(x == 135 and y == 225 and z == -45)
+    x, y, z = build.compute_target_cell({ x = 0, y = 0, z = 0 }, 0, 0)
+    assert(x == 0 and y == 0 and z == 1)
+    x, y, z = build.compute_target_cell({ x = 0, y = 90, z = 0 }, 16384, 1)
+    assert(x == 1 and y == 2 and z == 0)
+    assert(build.cell_key(-2, 0, 4) == "-2,0,4")
+    print("PASS: invisible grid coordinate and forward-target math")
+end
+
+local function test_world_load_and_collision()
+    assert(build.ensure_world_loaded() == true)
+    assert(state().block_count == 0)
+    assert(state().world_key == "1_1_1")
+
+    local placed, reason = build.place_grid_block(0, 0, 1)
+    assert(placed == true, "first placement failed: " .. tostring(reason))
+    local snapshot = state()
+    assert(snapshot.block_count == 1)
+    assert(snapshot.inventory[1].count == 63)
+    local cell = find_cell(0, 0, 1)
+    assert(cell and cell.id == "minecraft:stone")
+    assert(cell.object ~= nil)
+    assert(cell.object.collisionData == 777)
+    assert(cell.object.scale == build.constants.object_scale)
+    assert(cell.object.oCollisionDistance > 0)
+    assert(cell.object.oDrawingDistance > 0)
+
+    local duplicate = build.place_grid_block(0, 0, 1)
+    assert(duplicate == false, "occupied cell accepted a second block")
+    assert(state().inventory[1].count == 63, "failed placement consumed inventory")
+
+    behavior.loop(cell.object)
+    assert(collision_calls == 1, "block behavior did not register a dynamic collision update")
+
+    assert(storage["sc_world_1_1_1_chunk_1"] ~= nil, "grid data was not persisted")
+    local removed, remove_reason = build.remove_grid_block(0, 0, 1)
+    assert(removed == true, "block removal failed: " .. tostring(remove_reason))
+    assert(state().block_count == 0)
+    assert(state().inventory[1].count == 64, "removed block was not returned to inventory")
+    assert(cell.object.activeFlags == ACTIVE_FLAG_DEACTIVATED, "removed object was not deactivated")
+    assert(storage["sc_world_1_1_1_chunk_1"] == nil, "empty grid storage chunk was not removed")
+    print("PASS: place, duplicate rejection, dynamic collision loop, remove, and refund")
+end
+
+local function test_bedrock_and_full_inventory()
+    build.select_inventory_slot(9)
+    local placed = build.place_grid_block(1, 0, 0)
+    assert(placed == true)
+    local ok, reason = build.remove_grid_block(1, 0, 0)
+    assert(ok == false and reason == "unbreakable")
+    assert(find_cell(1, 0, 0) ~= nil, "bedrock was removed")
+    assert(state().inventory[9].count == 63, "bedrock count changed after failed break")
+
+    -- Fill the remaining bedrock stack, then prove that a full inventory prevents removal.
+    assert(build.inventory_add_block("minecraft:bedrock", 1) == true)
+    assert(state().inventory[9].count == 64)
+    ok, reason = build.remove_grid_block(1, 0, 0)
+    assert(ok == false and reason == "inventory_full")
+    assert(find_cell(1, 0, 0) ~= nil, "block disappeared despite full inventory")
+    print("PASS: unbreakable bedrock and no item loss when inventory is full")
+end
+
+local function test_hotbar_and_input()
+    build.select_inventory_slot(1)
+    local m = {
+        playerIndex = 0,
+        controller = {
+            buttonDown = L_TRIG | R_JPAD,
+            buttonPressed = L_TRIG | R_JPAD,
+            buttonReleased = 0,
+        },
+        pos = { x = 0, y = 0, z = 0 },
+        faceAngle = { y = 0 },
+    }
+    build.handle_build_input(m)
+    assert(state().selected_slot == 2)
+    assert((m.controller.buttonPressed & R_JPAD) == 0, "hotbar input was not consumed")
+    assert((m.controller.buttonDown & R_JPAD) == 0, "held hotbar input leaked into Mario controls")
+    assert((m.controller.buttonDown & L_TRIG) ~= 0, "build modifier was unexpectedly cleared")
+
+    m.controller.buttonDown = L_TRIG | U_JPAD
+    m.controller.buttonPressed = L_TRIG | U_JPAD
+    build.handle_build_input(m)
+    assert(state().build_height_offset == 1)
+    assert((m.controller.buttonPressed & U_JPAD) == 0)
+
+    m.controller.buttonDown = 0
+    m.controller.buttonPressed = 0
+    build.render_inventory()
+    assert(#hud_lines >= 2, "inventory HUD did not render")
+    print("PASS: hotbar selection, layer control, consumed inputs, and HUD")
+end
+
+local function test_per_area_persistence_and_chunk_limits()
+    -- New area must have a distinct grid, without deleting area 1 data.
+    gNetworkPlayers[0].currAreaIndex = 2
+    assert(build.ensure_world_loaded() == true)
+    assert(state().world_key == "1_1_2")
+    assert(state().block_count == 0)
+
+    -- Populate area 2 beyond a single storage chunk while keeping the total below 128.
+    local cell_count = 48
+    for index = 0, cell_count - 1 do
+        local slot = (index % 8) + 1
+        build.select_inventory_slot(slot)
+        local item = state().inventory[slot]
+        if item.count == 0 then
+            assert(build.inventory_add_block(item.id, 64))
+        end
+        local ok, reason = build.place_grid_block(index, 0, 0)
+        assert(ok == true, "bulk placement failed at " .. index .. ": " .. tostring(reason))
+    end
+    assert(state().block_count == cell_count)
+
+    local prefix = "sc_world_1_1_2_chunk_"
+    local chunk_count = 0
+    for key, value in pairs(storage) do
+        if key:sub(1, #prefix) == prefix then
+            chunk_count = chunk_count + 1
+            assert(#value <= build.constants.storage_chunk_size, "storage chunk exceeded safe mod-storage length")
+        end
+    end
+    assert(chunk_count > 1, "large grid was not split into multiple storage chunks")
+
+    -- Changing areas deactivates previous objects and loads an independent empty grid.
+    local area2_block = find_cell(0, 0, 0)
+    local area2_object = area2_block.object
+    gNetworkPlayers[0].currAreaIndex = 3
+    assert(build.ensure_world_loaded() == true)
+    assert(state().block_count == 0)
+    assert(area2_object.activeFlags == ACTIVE_FLAG_DEACTIVATED)
+
+    -- Return to area 2: all persisted grid blocks are reconstructed.
+    gNetworkPlayers[0].currAreaIndex = 2
+    assert(build.ensure_world_loaded() == true)
+    assert(state().block_count == cell_count)
+    assert(find_cell(0, 0, 0).object ~= nil)
+
+    -- Returning to the original area also reloads its independent block state.
+    gNetworkPlayers[0].currAreaIndex = 1
+    assert(build.ensure_world_loaded() == true)
+    assert(state().world_key == "1_1_1")
+    assert(state().block_count == 0)
+    print("PASS: per-area persistence, reload, cleanup, and bounded storage chunks")
+end
+
+local function test_block_limit()
+    gNetworkPlayers[0].currAreaIndex = 4
+    assert(build.ensure_world_loaded() == true)
+    local target = 0
+    for slot = 1, 9 do
+        build.select_inventory_slot(slot)
+        for _ = 1, 14 do
+            local entry = state().inventory[slot]
+            if entry.count > 0 and target < build.constants.max_blocks then
+                local ok, reason = build.place_grid_block(target, 0, 0)
+                assert(ok == true, "grid capacity fill failed: " .. tostring(reason))
+                target = target + 1
+            end
+        end
+    end
+    -- Tests can seed the remaining stacks through the public inventory helper.
+    while target < build.constants.max_blocks do
+        for slot = 1, 9 do
+            build.select_inventory_slot(slot)
+            local entry = state().inventory[slot]
+            if entry.count == 0 then
+                build.inventory_add_block(entry.id, 64)
+                entry = state().inventory[slot]
+            end
+            if entry.count > 0 and target < build.constants.max_blocks then
+                local ok = build.place_grid_block(target, 0, 0)
+                assert(ok == true)
+                target = target + 1
+            end
+        end
+        local total = 0
+        for _, entry in ipairs(state().inventory) do total = total + entry.count end
+        if total == 0 and target < build.constants.max_blocks then
+            -- Use a new test save slot to replenish a finite test-only inventory.
+            assert(false, "test inventory was exhausted before the configured grid cap")
+        end
+    end
+    local ok, reason = build.place_grid_block(999, 0, 0)
+    assert(ok == false and reason == "grid_full")
+    assert(state().block_count == build.constants.max_blocks)
+    print("PASS: configured per-area block limit")
+end
+
+test_catalog()
+test_grid_math()
+test_world_load_and_collision()
+test_bedrock_and_full_inventory()
+test_hotbar_and_input()
+test_per_area_persistence_and_chunk_limits()
+test_block_limit()
+print("SteveCraft build-system validation passed.")
