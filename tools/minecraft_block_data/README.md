@@ -14,7 +14,7 @@ registry.
 - Block tag membership.
 - Recipe IDs, recipe types, ingredient item IDs, and result item/count.
 - Whether a block has a block loot-table resource.
-- Sound-event IDs and the number of sound entries.
+- Sound-event IDs and the number of sound entries, read from the version asset index because sounds.json is distributed separately from the client JAR.
 
 Textures, audio files, raw Minecraft JSON resources, and Minecraft source code
 are not copied.
