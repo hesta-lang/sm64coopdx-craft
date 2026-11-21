@@ -9,6 +9,7 @@ local texture_info = {}
 local meshes = {} -- per-object mesh instances; vertex color values encode AO
 local material_meshes = {}
 local object_blocks = {}
+local object_ready = {}
 local display_nodes = {}
 local hooks_installed = false
 local warned = {}
@@ -410,12 +411,16 @@ local function on_object_unload(object)
     local key = object_key(object)
     if key ~= nil then
         object_blocks[key] = nil
+        object_ready[key] = nil
         meshes[key] = nil
     end
 end
 
 local function on_level_init()
     object_blocks = {}
+    object_ready = {}
+    meshes = {}
+    material_meshes = {}
     display_nodes = {}
 end
 
@@ -476,6 +481,7 @@ function Renderer.attach(object, block_id, world_blocks)
     local ok, root = pcall(function() return object.header.gfx.sharedChild end)
     if not ok or root == nil then return false end
     remember_display_nodes(root)
+    object_ready[key] = true
     return true
 end
 
@@ -491,6 +497,7 @@ function Renderer.detach(object)
     local key = object_key(object)
     if key == nil then return false end
     object_blocks[key] = nil
+    object_ready[key] = nil
     meshes[key] = nil
     return true
 end
@@ -502,6 +509,11 @@ end
 function Renderer.get_attached_block(object)
     local key = object_key(object)
     return key and object_blocks[key] or nil
+end
+
+function Renderer.is_ready(object)
+    local key = object_key(object)
+    return key ~= nil and object_ready[key] == true
 end
 
 function Renderer.debug_counts()
