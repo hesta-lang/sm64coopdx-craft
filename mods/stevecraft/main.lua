@@ -3,389 +3,55 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.0-alpha"
-local STEVE_GEO_NAME = "mario_geo"
-local STEVE_GEO_FILE = "actors/minecraft_steve_geo.bin"
+local STEVECRAFT_VERSION = "0.4.3-alpha"
 
-local sModelId = nil
-local sModelLoadAttempted = false
-local sModelAppliedObject = nil
-local sWarned = false
-local sVerifyWarned = false
-local sLastSteveState = nil
-
-local sAnimationsRegistered = false
-local sCurrentSteveAnimation = nil
-local STEVE_ANIMATION_FRAMES = 24
-local STEVE_ANIMATION_PARTS = 20
-local STEVE_ANIM_IDLE = "stevecraft_idle"
-local STEVE_ANIM_WALK = "stevecraft_walk"
-
--- These zero-based channel indices follow MarioAnimPart in include/types.h.
--- The original mario_geo has exactly 20 GEO_ANIMATED_PART nodes in this traversal order.
-local STEVE_PART = {
-    TORSO = 2,
-    HEAD = 3,
-    LEFT_ARM = 5,
-    LEFT_FOREARM = 6,
-    RIGHT_ARM = 9,
-    RIGHT_FOREARM = 10,
-    LEFT_THIGH = 13,
-    LEFT_LEG = 14,
-    RIGHT_THIGH = 17,
-    RIGHT_LEG = 18,
-}
-
-local function round_animation_value(value)
-    if value >= 0 then
-        return math.floor(value + 0.5)
+-- Resolve modules relative to this mod instead of depending on the host's
+-- current working directory or a globally configured Lua package.path.
+local function stevecraft_mod_directory()
+    if type(debug) == "table" and type(debug.getinfo) == "function" then
+        local ok, info = pcall(debug.getinfo, 1, "S")
+        local source = ok and info and info.source or nil
+        if type(source) == "string" and source:sub(1, 1) == "@" then
+            local path = source:sub(2)
+            local directory = path:match("^(.*[/\\\\])")
+            if directory then return directory end
+        end
     end
-    return math.ceil(value - 0.5)
+    return "mods/stevecraft/"
 end
 
-local function steve_animation_value(kind, part, axis, frame)
-    local phase = (frame / STEVE_ANIMATION_FRAMES) * (math.pi * 2)
-    local wave = math.sin(phase)
-
-    if kind == "idle" then
-        if axis == 1 and part == STEVE_PART.TORSO then
-            return round_animation_value(wave * 96) -- ~0.53 degrees
-        end
-        if axis == 1 and part == STEVE_PART.HEAD then
-            return round_animation_value(wave * -32)
-        end
-        return 0
-    end
-
-    if kind == "walk" and axis == 1 then
-        local swing = wave * 5461 -- ~30 degrees in SM64's 16-bit angle units
-        if part == STEVE_PART.LEFT_ARM then return round_animation_value(swing) end
-        if part == STEVE_PART.RIGHT_ARM then return round_animation_value(-swing) end
-        if part == STEVE_PART.LEFT_THIGH then return round_animation_value(-swing) end
-        if part == STEVE_PART.RIGHT_THIGH then return round_animation_value(swing) end
-
-        -- Subtle elbow bend layered over the opposing Minecraft-style swing.
-        if part == STEVE_PART.LEFT_FOREARM then
-            return round_animation_value(math.max(0, wave) * 900)
-        end
-        if part == STEVE_PART.RIGHT_FOREARM then
-            return round_animation_value(math.max(0, -wave) * 900)
-        end
-    end
-
-    return 0
-end
-
-local function build_steve_animation(kind)
-    local values = {}
-    local index = {}
-
-    -- ANIM_FLAG_6 (0x40) tells the renderer to skip the reserved root translation.
-    -- The index format still requires three [frameCount, valueOffset] pairs here.
-    for _ = 1, 3 do
-        index[#index + 1] = STEVE_ANIMATION_FRAMES
-        index[#index + 1] = 0
-    end
-
-    -- Each GEO_ANIMATED_PART consumes X/Y/Z rotation channels in traversal order.
-    for part = 0, STEVE_ANIMATION_PARTS - 1 do
-        for axis = 1, 3 do
-            local valueOffset = #values
-            index[#index + 1] = STEVE_ANIMATION_FRAMES
-            index[#index + 1] = valueOffset
-
-            for frame = 0, STEVE_ANIMATION_FRAMES - 1 do
-                values[#values + 1] = steve_animation_value(kind, part, axis, frame)
-            end
-        end
-    end
-
-    return values, index
-end
-
-local function register_steve_animations()
-    if sAnimationsRegistered then return true end
-    if type(smlua_anim_util_register_animation) ~= "function" then
-        print("[SteveCraft] WARNING: custom animation registration API unavailable.")
-        return false
-    end
-
-    local definitions = {
-        { kind = "idle", name = STEVE_ANIM_IDLE },
-        { kind = "walk", name = STEVE_ANIM_WALK },
-    }
-
-    for _, definition in ipairs(definitions) do
-        local values, index = build_steve_animation(definition.kind)
-        local expectedIndexLength = 6 + (STEVE_ANIMATION_PARTS * 3 * 2)
-        if #index ~= expectedIndexLength
-            or #values ~= STEVE_ANIMATION_PARTS * 3 * STEVE_ANIMATION_FRAMES then
-            print("[SteveCraft] ERROR: generated animation channel count is invalid for " .. definition.name)
-            return false
-        end
-
-        local ok, err = pcall(
-            smlua_anim_util_register_animation,
-            definition.name,
-            0x40, -- ANIM_FLAG_6: no root translation; rotate animated parts only
-            0,    -- animYTransDivisor
-            0,    -- startFrame
-            0,    -- loopStart
-            STEVE_ANIMATION_FRAMES,
-            values,
-            index
-        )
-        if not ok then
-            print("[SteveCraft] ERROR: animation registration failed for " .. definition.name .. ": " .. tostring(err))
-            return false
-        end
-        print("[SteveCraft] Registered " .. definition.name .. " (" .. #values .. " values, " .. #index .. " index entries).")
-    end
-
-    sAnimationsRegistered = true
-    return true
-end
-
-local function apply_steve_animation(m, state)
-    if not sAnimationsRegistered or m.marioObj == nil then return end
-    if type(smlua_anim_util_set_animation) ~= "function" then return end
-
-    local target = state == "move" and STEVE_ANIM_WALK or STEVE_ANIM_IDLE
-    if target == sCurrentSteveAnimation then return end
-
-    local ok, err = pcall(smlua_anim_util_set_animation, m.marioObj, target)
-    if not ok then
-        print("[SteveCraft] ERROR: unable to select " .. target .. ": " .. tostring(err))
-        return
-    end
-
-    sCurrentSteveAnimation = target
-    print("[SteveCraft] Animation selected: " .. target)
-end
-
--- Bedrock-inspired animation-controller pattern: observe conditions and select a state.
--- It selects the formula-generated idle/walk animation without changing movement or collision.
-local function get_steve_controller_state(m)
-    local action = m.action or 0
-    if (action & ACT_FLAG_SWIMMING) ~= 0 then
-        return "swim"
-    end
-    if (action & ACT_FLAG_AIR) ~= 0 then
-        local verticalSpeed = 0.0
-        if m.vel ~= nil then
-            verticalSpeed = m.vel.y or 0.0
-        end
-        if verticalSpeed > 0.0 then return "jump" end
-        return "fall"
-    end
-    if (action & ACT_FLAG_MOVING) ~= 0 then
-        return "move"
-    end
-    return "idle"
-end
-
-local function update_steve_controller(m)
-    local state = get_steve_controller_state(m)
-    if state ~= sLastSteveState then
-        sLastSteveState = state
-        print("[SteveCraft] Controller state: " .. state)
-    end
-    return state
-end
-
--- The name passed to the API is a GeoLayout symbol, not the .bin filename.
-local function load_steve_model()
-    if sModelLoadAttempted then return sModelId end
-    sModelLoadAttempted = true
-
-    if type(smlua_model_util_get_id) ~= "function" then
-        print("[SteveCraft] ERROR: smlua_model_util_get_id API unavailable.")
-        return nil
-    end
-
-    -- Prefer a ModFS URI when the actor is available there. Some older
-    -- standalone packages register the actor by its internal GeoLayout symbol,
-    -- so retain that official DynOS lookup as a fallback.
-    local candidates = {}
-    if type(mod_fs_get) == "function" and type(MOD_FS_URI_FORMAT) == "string" then
-        local mod_fs = nil
-        local fs_ok, fs_result = pcall(mod_fs_get)
-        if fs_ok then mod_fs = fs_result end
-        if mod_fs == nil and type(mod_fs_create) == "function" then
-            local create_ok, create_result = pcall(mod_fs_create)
-            if create_ok then mod_fs = create_result end
-        end
-        if mod_fs ~= nil and type(mod_fs.modPath) == "string" then
-            candidates[#candidates + 1] = string.format(MOD_FS_URI_FORMAT, mod_fs.modPath, STEVE_GEO_FILE)
-        end
-    end
-    candidates[#candidates + 1] = STEVE_GEO_NAME
-
-    local modelId = E_MODEL_ERROR_MODEL
-    local used_name = nil
-    for _, lookup_name in ipairs(candidates) do
-        local ok, result = pcall(smlua_model_util_get_id, lookup_name)
-        if ok and type(result) == "number" and result ~= E_MODEL_ERROR_MODEL then
-            modelId = result
-            used_name = lookup_name
-            break
-        elseif not ok then
-            print("[SteveCraft] WARNING: actor lookup failed for " .. lookup_name .. ": " .. tostring(result))
-        end
-    end
-
-    if modelId == E_MODEL_ERROR_MODEL then
-        print("[SteveCraft] ERROR: DynOS could not resolve Steve's GeoLayout.")
-        print("[SteveCraft] Check that actors/minecraft_steve_geo.bin is included and registered by the mod.")
-        return nil
-    end
-
-    sModelId = modelId
-    print("[SteveCraft] Steve actor lookup succeeded (" .. tostring(used_name) .. "), extended model id=" .. tostring(modelId))
-    return sModelId
-end
-
--- Read-back verification uses the model-id mapping exposed by SM64CoopDX's C API.
-local function get_current_extended_model_id(obj)
-    if type(obj_get_model_id_extended) ~= "function" then
-        if not sVerifyWarned then
-            print("[SteveCraft] WARNING: obj_get_model_id_extended unavailable; assignment cannot be read back.")
-            sVerifyWarned = true
-        end
-        return nil
-    end
-
-    local ok, currentId = pcall(obj_get_model_id_extended, obj)
-    if not ok or type(currentId) ~= "number" then
-        if not sVerifyWarned then
-            print("[SteveCraft] WARNING: model read-back failed: " .. tostring(currentId))
-            sVerifyWarned = true
-        end
-        return nil
-    end
-    return currentId
-end
-
-local function apply_steve_to_mario(m)
-    if m == nil or m.playerIndex ~= 0 then return end
-    update_steve_health(m)
-    ensure_first_person_camera(m)
-    local state = update_steve_controller(m)
-    if m.marioObj == nil then return end
-
-    local modelId = load_steve_model()
-    if modelId == nil then return end
-    -- The official SM64CoopDX player-model example reapplies the extended model
-    -- on every HOOK_MARIO_UPDATE. A one-shot assignment can be overwritten by
-    -- the normal player renderer during later frames.
-    local already_applied = (sModelAppliedObject == m.marioObj)
-
-    -- Calls the engine's native loader and assigns the model to the existing player object.
-    local ok, result = pcall(obj_set_model_extended, m.marioObj, modelId)
-    if not ok or result == false then
-        if not sWarned then
-            print("[SteveCraft] ERROR: obj_set_model_extended failed: " .. tostring(result))
-            sWarned = true
-        end
-        return
-    end
-
-    -- The native setter returns void; verify its effect by querying the object's graph-node model.
-    local currentId = get_current_extended_model_id(m.marioObj)
-    if currentId ~= nil and currentId ~= modelId then
-        if not sWarned then
-            print("[SteveCraft] ERROR: model assignment did not persist. Expected extended id=" .. tostring(modelId) .. ", got=" .. tostring(currentId))
-            sWarned = true
-        end
-        return
-    end
-
-    sModelAppliedObject = m.marioObj
-    if not already_applied and register_steve_animations() then
-        sCurrentSteveAnimation = nil
-    end
-    apply_steve_animation(m, state)
-
-    if not already_applied then
-        if currentId == modelId then
-            print("[SteveCraft] Steve model assigned and verified on the existing marioObj.")
-        else
-            print("[SteveCraft] Steve model assigned; read-back verification is unavailable on this build.")
-        end
+local STEVECRAFT_MOD_DIR = stevecraft_mod_directory()
+if type(package) == "table" and type(package.path) == "string" then
+    local module_path = STEVECRAFT_MOD_DIR .. "?.lua;"
+    if not package.path:find(module_path, 1, true) then
+        package.path = module_path .. package.path
     end
 end
 
+local function stevecraft_load_module(module_name, relative_path)
+    local ok, module = pcall(require, module_name)
+    if ok and type(module) == "table" then return module end
 
--- Minecraft Java 26.3 block catalogue. Values are from the validated runtime-registry artifact.
--- Friction is 0.6 for these blocks, so their SM64 collision uses SURFACE_DEFAULT.
-local BLOCK_CATALOG = {
-    ["minecraft:stone"] = {
-        name = "Stone", short = "ST", index = 1,
-        destroy_speed = 1.5, explosion_resistance = 6.0, friction = 0.6,
-        break_sound = "minecraft:block.stone.break", step_sound = "minecraft:block.stone.step",
-        place_sound = "minecraft:block.stone.place", collision = "full_cube",
-    },
-    ["minecraft:dirt"] = {
-        name = "Dirt", short = "DI", index = 2,
-        destroy_speed = 0.5, explosion_resistance = 0.5, friction = 0.6,
-        break_sound = "minecraft:block.gravel.break", step_sound = "minecraft:block.gravel.step",
-        place_sound = "minecraft:block.gravel.place", collision = "full_cube",
-    },
-    ["minecraft:grass_block"] = {
-        name = "Grass", short = "GR", index = 3,
-        destroy_speed = 0.6, explosion_resistance = 0.6, friction = 0.6,
-        break_sound = "minecraft:block.grass.break", step_sound = "minecraft:block.grass.step",
-        place_sound = "minecraft:block.grass.place", collision = "full_cube",
-    },
-    ["minecraft:oak_planks"] = {
-        name = "Oak Planks", short = "OP", index = 4,
-        destroy_speed = 2.0, explosion_resistance = 3.0, friction = 0.6,
-        break_sound = "minecraft:block.wood.break", step_sound = "minecraft:block.wood.step",
-        place_sound = "minecraft:block.wood.place", collision = "full_cube",
-    },
-    ["minecraft:cobblestone"] = {
-        name = "Cobblestone", short = "CO", index = 5,
-        destroy_speed = 2.0, explosion_resistance = 6.0, friction = 0.6,
-        break_sound = "minecraft:block.stone.break", step_sound = "minecraft:block.stone.step",
-        place_sound = "minecraft:block.stone.place", collision = "full_cube",
-    },
-    ["minecraft:glass"] = {
-        name = "Glass", short = "GL", index = 6,
-        destroy_speed = 0.3, explosion_resistance = 0.3, friction = 0.6,
-        break_sound = "minecraft:block.glass.break", step_sound = "minecraft:block.glass.step",
-        place_sound = "minecraft:block.glass.place", collision = "full_cube",
-    },
-    ["minecraft:bricks"] = {
-        name = "Bricks", short = "BR", index = 7,
-        destroy_speed = 2.0, explosion_resistance = 6.0, friction = 0.6,
-        break_sound = "minecraft:block.stone.break", step_sound = "minecraft:block.stone.step",
-        place_sound = "minecraft:block.stone.place", collision = "full_cube",
-    },
-    ["minecraft:sand"] = {
-        name = "Sand", short = "SA", index = 8,
-        destroy_speed = 0.5, explosion_resistance = 0.5, friction = 0.6,
-        break_sound = "minecraft:block.sand.break", step_sound = "minecraft:block.sand.step",
-        place_sound = "minecraft:block.sand.place", collision = "full_cube",
-    },
-    ["minecraft:bedrock"] = {
-        name = "Bedrock", short = "BE", index = 9,
-        destroy_speed = -1.0, explosion_resistance = 3600000.0, friction = 0.6,
-        break_sound = "minecraft:block.stone.break", step_sound = "minecraft:block.stone.step",
-        place_sound = "minecraft:block.stone.place", collision = "full_cube",
-    },
-}
+    if type(dofile) == "function" then
+        local fallback_ok, fallback = pcall(dofile, STEVECRAFT_MOD_DIR .. relative_path .. ".lua")
+        if fallback_ok and type(fallback) == "table" then return fallback end
+        error("SteveCraft could not load " .. relative_path .. ".lua: " .. tostring(fallback), 0)
+    end
+    error("SteveCraft could not load Lua module " .. module_name .. ": " .. tostring(module), 0)
+end
 
-local DEFAULT_HOTBAR = {
-    "minecraft:stone",
-    "minecraft:dirt",
-    "minecraft:grass_block",
-    "minecraft:oak_planks",
-    "minecraft:cobblestone",
-    "minecraft:glass",
-    "minecraft:bricks",
-    "minecraft:sand",
-    "minecraft:bedrock",
-}
+-- Gameplay modules are siblings of main.lua; engine and asset adapters live in systems/.
+local Assets = stevecraft_load_module("systems/assets", "systems/assets")
+local Native = stevecraft_load_module("systems/native_engine", "systems/native_engine")
+local Blocks = stevecraft_load_module("blocks", "blocks")
+local Sounds = stevecraft_load_module("sounds", "sounds")
+local Physics = stevecraft_load_module("physics", "physics")
+local Camera = stevecraft_load_module("camera", "camera")
+local HUD = stevecraft_load_module("hud", "hud")
+local Model = stevecraft_load_module("model", "model")
+
+local BLOCK_CATALOG = Blocks.catalog
+local DEFAULT_HOTBAR = Blocks.default_hotbar
 
 local GRID_CELL_SIZE = 90
 local GRID_OBJECT_SCALE = 0.45
@@ -414,14 +80,9 @@ local sBuildHeightOffset = 0
 local sWarnedGridCollision = false
 local sWarnedGridSpawn = false
 local sWorldBlockCount = 0
-local sFirstPersonInitialized = false
-local sFirstPersonWarningShown = false
-local sLastMarioHealth = nil
 local sMiningCellKey = nil
 local sMiningFrames = 0
 local sMiningRequiredFrames = 0
-local update_steve_health
-local ensure_first_person_camera
 
 local function copy_table(source)
     local result = {}
@@ -662,7 +323,7 @@ if type(hook_behavior) == "function" then
         hook_behavior,
         nil,
         OBJ_LIST_SURFACE,
-        true,
+        false,
         grid_block_init,
         grid_block_loop
     )
@@ -671,6 +332,10 @@ if type(hook_behavior) == "function" then
     else
         print("[SteveCraft] ERROR: unable to register grid block collision behavior: " .. tostring(behavior_id))
     end
+end
+
+local function grid_object_registry_key(x, y, z)
+    return tostring(sCurrentWorldKey or "unknown") .. ":" .. cell_key(x, y, z)
 end
 
 local function spawn_grid_block(block_id, x, y, z)
@@ -690,30 +355,15 @@ local function spawn_grid_block(block_id, x, y, z)
         obj.oAnimState = 0
     end
 
-    local object = nil
-    if type(spawn_sync_object) == "function" then
-        local ok, result = pcall(
-            spawn_sync_object,
-            sGridBlockBehaviorId,
-            E_MODEL_BREAKABLE_BOX,
-            world_x, world_y, world_z,
-            initialize
-        )
-        if ok then object = result end
-    end
-    if object == nil and type(spawn_non_sync_object) == "function" then
-        local ok, result = pcall(
-            spawn_non_sync_object,
-            sGridBlockBehaviorId,
-            E_MODEL_BREAKABLE_BOX,
-            world_x, world_y, world_z,
-            initialize
-        )
-        if ok then object = result end
-    end
-
+    local object, reason = Blocks.spawn_once(
+        grid_object_registry_key(x, y, z),
+        sGridBlockBehaviorId,
+        E_MODEL_BREAKABLE_BOX,
+        world_x, world_y, world_z,
+        initialize
+    )
     if object == nil and not sWarnedGridSpawn then
-        print("[SteveCraft] ERROR: SM64CoopDX could not spawn a grid block object.")
+        print("[SteveCraft] ERROR: local grid block spawn failed: " .. tostring(reason))
         sWarnedGridSpawn = true
     end
     return object
@@ -776,6 +426,7 @@ local function deactivate_world_objects()
             pcall(function() object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
         end
     end
+    Blocks.clear_spawned()
 end
 
 local function load_world_grid(world_prefix)
@@ -848,10 +499,20 @@ local function place_grid_block(x, y, z)
     sWorldBlocks[key] = { id = block_id, x = x, y = y, z = z, object = object }
     sWorldBlockCount = sWorldBlockCount + 1
     selected.count = selected.count - 1
+    local wx, wy, wz = cell_center(x, y, z)
+    Sounds.play_place(block_id, { x = wx, y = wy, z = wz })
     save_inventory()
     save_world_grid()
     return true
 end
+
+local original_place_grid_block = place_grid_block
+place_grid_block = function(x, y, z, ...)
+    local placed, reason = original_place_grid_block(x, y, z, ...)
+    return placed, reason
+end
+
+
 
 local function remove_grid_block(x, y, z)
     if not ensure_world_loaded() then return false, "world_not_ready" end
@@ -870,191 +531,42 @@ local function remove_grid_block(x, y, z)
     if cell.object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
         pcall(function() cell.object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
     end
+    Blocks.forget(grid_object_registry_key(x, y, z), cell.object)
     sWorldBlocks[key] = nil
     sWorldBlockCount = math.max(0, sWorldBlockCount - 1)
     inventory_add_block(cell.id, 1)
+    local wx, wy, wz = cell_center(x, y, z)
+    Sounds.play_break(cell.id, { x = wx, y = wy, z = wz })
     save_inventory()
     save_world_grid()
     return true
 end
 
+local original_remove_grid_block = remove_grid_block
+remove_grid_block = function(x, y, z, ...)
+    return original_remove_grid_block(x, y, z, ...)
+end
+
+
 
 local function health_to_half_hearts(health)
-    local minimum = 0x00FF
-    local maximum = 0x0880
-    health = tonumber(health) or minimum
-    local fraction = (health - minimum) / (maximum - minimum)
-    fraction = math.max(0, math.min(1, fraction))
-    return math.max(0, math.min(20, math.floor(fraction * 20 + 0.5)))
-end
-
-update_steve_health = function(m)
-    if m == nil or m.playerIndex ~= 0 or type(m.health) ~= "number" then return end
-    local health = m.health
-    if sLastMarioHealth ~= nil and health < sLastMarioHealth then
-        local damage = sLastMarioHealth - health
-        local shake = SHAKE_SMALL_DAMAGE or 3
-        if damage >= 0x0180 then
-            shake = SHAKE_LARGE_DAMAGE or 5
-        elseif damage >= 0x00C0 then
-            shake = SHAKE_MED_DAMAGE or 4
-        end
-        if type(set_camera_shake_from_hit) == "function" then
-            pcall(set_camera_shake_from_hit, shake)
-        end
-    end
-    sLastMarioHealth = health
-end
-
-ensure_first_person_camera = function(m)
-    if type(set_first_person_enabled) ~= "function" then
-        if not sFirstPersonWarningShown then
-            print("[SteveCraft] WARNING: this SM64CoopDX build does not expose first-person camera controls.")
-            sFirstPersonWarningShown = true
-        end
-        return false
-    end
-
-    local camera = gFirstPersonCamera
-    if not sFirstPersonInitialized then
-        if type(first_person_reset) == "function" then
-            pcall(first_person_reset)
-        end
-        camera = gFirstPersonCamera
-        if camera ~= nil then
-            local facing = 0
-            if m and m.faceAngle and type(m.faceAngle.y) == "number" then
-                facing = m.faceAngle.y
-            end
-            camera.yaw = facing + 0x8000
-            camera.pitch = 0
-            camera.centerL = false
-            camera.forcePitch = false
-            camera.forceYaw = false
-            camera.forceRoll = true
-            camera.fov = 70
-        end
-        local ok, err = pcall(set_first_person_enabled, true)
-        if not ok then
-            print("[SteveCraft] ERROR: unable to enable first-person camera: " .. tostring(err))
-            return false
-        end
-        sFirstPersonInitialized = true
-        print("[SteveCraft] SM64CoopDX first-person camera enabled.")
-    elseif camera ~= nil then
-        -- L is SteveCraft's build modifier, so do not let the camera recenter
-        -- itself whenever the player holds that trigger.
-        camera.centerL = false
-        if camera.enabled ~= true then
-            pcall(set_first_person_enabled, true)
-        end
-    end
-    return true
+    return Camera.health_to_half_hearts(health)
 end
 
 local function is_first_person_active()
-    if type(get_first_person_enabled) == "function" then
-        local ok, enabled = pcall(get_first_person_enabled)
-        return ok and enabled == true
-    end
-    return gFirstPersonCamera ~= nil and gFirstPersonCamera.enabled == true
+    return Camera.is_active()
 end
 
-local function get_camera_ray(m)
-    local camera = gFirstPersonCamera
-    if camera == nil or type(camera.yaw) ~= "number" or type(camera.pitch) ~= "number" then
-        return nil
-    end
-
-    local origin = gLakituState and gLakituState.pos or nil
-    if origin == nil then
-        if m == nil or m.pos == nil then return nil end
-        origin = { x = m.pos.x, y = (m.pos.y or 0) + 120, z = m.pos.z }
-    end
-
-    local yaw_sin = type(sins) == "function" and sins(camera.yaw) or math.sin(camera.yaw * math.pi / 32768)
-    local yaw_cos = type(coss) == "function" and coss(camera.yaw) or math.cos(camera.yaw * math.pi / 32768)
-    local pitch_sin = type(sins) == "function" and sins(camera.pitch) or math.sin(camera.pitch * math.pi / 32768)
-    local pitch_cos = type(coss) == "function" and coss(camera.pitch) or math.cos(camera.pitch * math.pi / 32768)
-
-    -- Match the forward vector used by first_person_cam.c when it builds
-    -- Lakitu's focus from the camera yaw and pitch.
-    local direction = {
-        x = -pitch_cos * yaw_sin,
-        y = -pitch_sin,
-        z = -pitch_cos * yaw_cos,
-    }
-    return origin, direction
+local function get_camera_ray(mario)
+    return Camera.get_ray(mario)
 end
 
 local function trace_voxel_ray(origin, direction, max_distance, blocks)
-    if origin == nil or direction == nil then return nil end
-    blocks = blocks or sWorldBlocks
-    max_distance = max_distance or VOXEL_RAY_REACH
-
-    local x = math.floor((origin.x or 0) / GRID_CELL_SIZE)
-    local y = math.floor((origin.y or 0) / GRID_CELL_SIZE)
-    local z = math.floor((origin.z or 0) / GRID_CELL_SIZE)
-    local previous_x, previous_y, previous_z = nil, nil, nil
-
-    local function axis_parameters(origin_value, cell, direction_value)
-        if math.abs(direction_value) < 0.000001 then
-            return math.huge, math.huge, 0
-        end
-        local step = direction_value > 0 and 1 or -1
-        local boundary = direction_value > 0 and ((cell + 1) * GRID_CELL_SIZE) or (cell * GRID_CELL_SIZE)
-        local max_value = (boundary - origin_value) / direction_value
-        local delta_value = GRID_CELL_SIZE / math.abs(direction_value)
-        return max_value, delta_value, step
-    end
-
-    local max_x, delta_x, step_x = axis_parameters(origin.x or 0, x, direction.x or 0)
-    local max_y, delta_y, step_y = axis_parameters(origin.y or 0, y, direction.y or 0)
-    local max_z, delta_z, step_z = axis_parameters(origin.z or 0, z, direction.z or 0)
-
-    for _ = 1, 64 do
-        if blocks[cell_key(x, y, z)] ~= nil then
-            return x, y, z, previous_x, previous_y, previous_z
-        end
-
-        local distance
-        if max_x <= max_y and max_x <= max_z then
-            distance = max_x
-            max_x = max_x + delta_x
-            previous_x, previous_y, previous_z = x, y, z
-            x = x + step_x
-        elseif max_y <= max_z then
-            distance = max_y
-            max_y = max_y + delta_y
-            previous_x, previous_y, previous_z = x, y, z
-            y = y + step_y
-        else
-            distance = max_z
-            max_z = max_z + delta_z
-            previous_x, previous_y, previous_z = x, y, z
-            z = z + step_z
-        end
-
-        if distance > max_distance then return nil end
-    end
-    return nil
+    return Camera.trace_voxel_ray(origin, direction, max_distance, blocks, GRID_CELL_SIZE)
 end
 
 local function get_world_surface_hit(origin, direction)
-    if type(collision_find_surface_on_ray) ~= "function" then return nil end
-    local dx = direction.x * VOXEL_RAY_REACH
-    local dy = direction.y * VOXEL_RAY_REACH
-    local dz = direction.z * VOXEL_RAY_REACH
-    local ok, result = pcall(
-        collision_find_surface_on_ray,
-        origin.x, origin.y, origin.z,
-        dx, dy, dz,
-        2.0
-    )
-    if not ok or result == nil or result.surface == nil or result.hitPos == nil then
-        return nil
-    end
-    return result
+    return Camera.get_world_surface_hit(origin, direction, VOXEL_RAY_REACH)
 end
 
 local function get_build_target(m, purpose)
@@ -1151,6 +663,9 @@ local function update_block_mining(m)
 end
 
 
+local sLastPlaceFrame = nil
+local sPlaceButtonLatched = false
+
 local function consume_build_controls(m)
     if not m or m.playerIndex ~= 0 or not m.controller then return end
     ensure_world_loaded()
@@ -1158,7 +673,12 @@ local function consume_build_controls(m)
     local controller = m.controller
     local down = controller.buttonDown or 0
     local pressed = controller.buttonPressed or 0
+    local released = controller.buttonReleased or 0
+    if (released & A_BUTTON) ~= 0 or ((down & A_BUTTON) == 0 and (pressed & A_BUTTON) == 0) then
+        sPlaceButtonLatched = false
+    end
     if (down & L_TRIG) == 0 then
+        sPlaceButtonLatched = false
         sMiningCellKey = nil
         sMiningFrames = 0
         sMiningRequiredFrames = 0
@@ -1184,14 +704,23 @@ local function consume_build_controls(m)
     end
 
     if (pressed & A_BUTTON) ~= 0 then
-        local x, y, z = get_build_target(m, "place")
-        if x then
-            local placed, reason = place_grid_block(x, y, z)
-            if not placed then
-                print("[SteveCraft] Cannot place block: " .. tostring(reason))
+        -- Some touch/controller paths can repeat buttonPressed across frames
+        -- while the same press is still held. Accept only its first edge.
+        if not sPlaceButtonLatched then
+            sPlaceButtonLatched = true
+            local frame = tonumber(gGlobalTimer) or -1
+            if frame < 0 or frame ~= sLastPlaceFrame then
+                sLastPlaceFrame = frame
+                local x, y, z = get_build_target(m, "place")
+                if x then
+                    local placed, reason = place_grid_block(x, y, z)
+                    if not placed then
+                        print("[SteveCraft] Cannot place block: " .. tostring(reason))
+                    end
+                else
+                    print("[SteveCraft] No surface or voxel in the crosshair range.")
+                end
             end
-        else
-            print("[SteveCraft] No surface or voxel in the crosshair range.")
         end
         consumed = consumed | A_BUTTON
     end
@@ -1214,196 +743,23 @@ local function consume_build_controls(m)
     end
 end
 
-local BLOCK_HUD_COLORS = {
-    ["minecraft:stone"] = { 132, 132, 132 },
-    ["minecraft:dirt"] = { 126, 82, 52 },
-    ["minecraft:grass_block"] = { 86, 150, 64 },
-    ["minecraft:oak_planks"] = { 174, 129, 72 },
-    ["minecraft:cobblestone"] = { 102, 102, 102 },
-    ["minecraft:glass"] = { 170, 218, 230 },
-    ["minecraft:bricks"] = { 166, 76, 62 },
-    ["minecraft:sand"] = { 218, 203, 139 },
-    ["minecraft:bedrock"] = { 62, 62, 70 },
-}
-
-local HEART_MASK = {
-    "0110110",
-    "1111111",
-    "1111111",
-    "0111110",
-    "0011100",
-    "0001000",
-}
-local FOOD_MASK = {
-    "0001100",
-    "0011110",
-    "0111110",
-    "0011111",
-    "0001111",
-    "0000011",
-}
-local ARMOR_MASK = {
-    "001000",
-    "011100",
-    "111110",
-    "111110",
-    "011100",
-    "001000",
-}
-
-local function hud_rect(x, y, width, height, r, g, b, a)
-    if type(djui_hud_set_color) ~= "function" or type(djui_hud_render_rect) ~= "function" then
-        return false
-    end
-    djui_hud_set_color(r, g, b, a or 255)
-    djui_hud_render_rect(x, y, width, height)
-    return true
-end
-
-local function draw_pixel_icon(mask, x, y, pixel, fill, empty, left_half_only)
-    for row = 1, #mask do
-        local line = mask[row]
-        for column = 1, #line do
-            if line:sub(column, column) == "1" then
-                local color = fill
-                if left_half_only and column > 4 then color = empty end
-                hud_rect(
-                    x + (column - 1) * pixel,
-                    y + (row - 1) * pixel,
-                    pixel, pixel,
-                    color[1], color[2], color[3], color[4] or 255
-                )
-            end
-        end
-    end
-end
-
-local function render_crosshair(screen_width, screen_height)
-    if not is_first_person_active() then return end
-    local center_x = math.floor(screen_width * 0.5)
-    local center_y = math.floor(screen_height * 0.5)
-    -- Black outline with a small white center, matching the Minecraft plus reticle.
-    hud_rect(center_x - 8, center_y - 1, 17, 3, 0, 0, 0, 220)
-    hud_rect(center_x - 1, center_y - 8, 3, 17, 0, 0, 0, 220)
-    hud_rect(center_x - 6, center_y, 13, 1, 245, 245, 245, 255)
-    hud_rect(center_x, center_y - 6, 1, 13, 245, 245, 245, 255)
-end
-
-local function render_status_bars(screen_width, screen_height)
-    local mario = gMarioStates and gMarioStates[0] or nil
-    local health = mario and mario.health or sLastMarioHealth or 0x0880
-    local half_hearts = health_to_half_hearts(health)
-    local pixel = 1.5
-    local icon_width = 10.5
-    local gap = 2
-    local row_width = 10 * icon_width + 9 * gap
-    local left_x = 16
-    local right_x = screen_width - row_width - 16
-    local y = screen_height - 76
-
-    for heart = 0, 9 do
-        local value = math.max(0, math.min(2, half_hearts - heart * 2))
-        local full = { 222, 48, 48, 255 }
-        local empty = { 72, 30, 34, 255 }
-        draw_pixel_icon(HEART_MASK, left_x + heart * (icon_width + gap), y, pixel, full, empty, value == 1)
-        if value == 0 then
-            draw_pixel_icon(HEART_MASK, left_x + heart * (icon_width + gap), y, pixel, empty, empty, false)
-        end
-    end
-
-    -- Hunger and armor are visual indicators only in this release. SM64CoopDX
-    -- has no Minecraft food/armor state to map yet; health is driven by MarioState.
-    for icon_index = 0, 9 do
-        local x = right_x + icon_index * (icon_width + gap)
-        local food_value = math.max(0, math.min(2, STEVE_HUNGER_POINTS - icon_index * 2))
-        local food_fill = food_value > 0 and { 220, 147, 54, 255 } or { 70, 48, 27, 255 }
-        draw_pixel_icon(FOOD_MASK, x, y, pixel, food_fill, { 70, 48, 27, 255 }, food_value == 1)
-
-        local armor_value = math.max(0, math.min(2, STEVE_ARMOR_POINTS - icon_index * 2))
-        local armor_fill = armor_value > 0 and { 160, 170, 180, 255 } or { 48, 54, 62, 255 }
-        draw_pixel_icon(ARMOR_MASK, left_x + icon_index * (icon_width + gap), y - 16,
-            pixel, armor_fill, { 48, 54, 62, 255 }, armor_value == 1)
-    end
-end
-
 local function render_build_inventory()
-    if not sInventoryLoaded then return end
-
-    if type(djui_hud_set_resolution) == "function" and type(RESOLUTION_DJUI) == "number" then
-        djui_hud_set_resolution(RESOLUTION_DJUI)
-    end
-    if type(djui_hud_set_font) == "function" and type(FONT_NORMAL) == "number" then
-        djui_hud_set_font(FONT_NORMAL)
-    end
-
-    local screen_width = type(djui_hud_get_screen_width) == "function" and djui_hud_get_screen_width() or 320
-    local screen_height = type(djui_hud_get_screen_height) == "function" and djui_hud_get_screen_height() or 240
-    render_crosshair(screen_width, screen_height)
-    render_status_bars(screen_width, screen_height)
-
-    if type(djui_hud_render_rect) ~= "function" then
-        if type(djui_hud_print_text) == "function" then
-            local parts = {}
-            for slot = 1, INVENTORY_SIZE do
-                local item = sInventory[slot]
-                local definition = item and BLOCK_CATALOG[item.id] or nil
-                local label = definition and definition.short or "--"
-                local count = item and item.count or 0
-                parts[#parts + 1] = (slot == sSelectedSlot and ">" or "") .. label .. ":" .. tostring(count)
-            end
-            djui_hud_print_text(table.concat(parts, "  "), 2, screen_height - 24, 0.6)
-        end
-        return
-    end
-
-    local gap = 4
-    local slot_size = math.max(22, math.min(40, (screen_width - 28 - 8 * gap) / 9))
-    local total_width = slot_size * 9 + gap * 8
-    local start_x = (screen_width - total_width) * 0.5
-    local start_y = screen_height - slot_size - 12
-
-    for slot = 1, INVENTORY_SIZE do
-        local x = start_x + (slot - 1) * (slot_size + gap)
-        local selected = slot == sSelectedSlot
-        hud_rect(x - (selected and 2 or 1), start_y - (selected and 2 or 1),
-            slot_size + (selected and 4 or 2), slot_size + (selected and 4 or 2),
-            selected and 244 or 20, selected and 214 or 20, selected and 88 or 20, 255)
-        hud_rect(x, start_y, slot_size, slot_size, 54, 54, 54, 210)
-        local item = sInventory[slot]
-        local definition = item and BLOCK_CATALOG[item.id] or nil
-        if definition then
-            local color = BLOCK_HUD_COLORS[item.id] or { 130, 130, 130 }
-            local inset = math.max(4, math.floor(slot_size * 0.25))
-            hud_rect(x + inset, start_y + inset, slot_size - inset * 2,
-                slot_size - inset * 2, color[1], color[2], color[3], 255)
-            if type(djui_hud_print_text) == "function" then
-                local count = tostring(item.count)
-                djui_hud_set_color(255, 255, 255, 255)
-                djui_hud_print_text(count, x + slot_size - 12, start_y + slot_size - 12, 0.55)
-            end
-        end
-    end
-
-    if type(djui_hud_print_text) == "function" then
-        local selected = sInventory[sSelectedSlot]
-        local definition = selected and BLOCK_CATALOG[selected.id] or nil
-        local selected_text = definition and (definition.name .. "  Y " .. tostring(sBuildHeightOffset)) or "Empty slot"
-        djui_hud_set_color(255, 235, 170, 255)
-        local text_width = type(djui_hud_measure_text) == "function" and djui_hud_measure_text(selected_text) * 0.65 or #selected_text * 5
-        djui_hud_print_text(selected_text, math.max(4, (screen_width - text_width) * 0.5), start_y - 24, 0.65)
-
-        if sMiningCellKey ~= nil then
-            local progress = math.min(1, sMiningFrames / math.max(1, sMiningRequiredFrames))
-            local bar_width = math.min(140, screen_width * 0.3)
-            local bar_x = (screen_width - bar_width) * 0.5
-            local bar_y = start_y - 10
-            hud_rect(bar_x, bar_y, bar_width, 4, 20, 20, 20, 220)
-            hud_rect(bar_x, bar_y, bar_width * progress, 4, 220, 190, 90, 255)
-        end
-    end
+    local mario = gMarioStates and gMarioStates[0] or nil
+    local health = mario and mario.health or 0x0880
+    HUD.render({
+        inventory_loaded = sInventoryLoaded,
+        inventory = sInventory,
+        selected_slot = sSelectedSlot,
+        catalog = BLOCK_CATALOG,
+        height_offset = sBuildHeightOffset,
+        health_points = Camera.health_to_half_hearts(health),
+        hunger_points = STEVE_HUNGER_POINTS,
+        armor_points = STEVE_ARMOR_POINTS,
+        camera_active = Camera.is_active(),
+        mining_frames = sMiningFrames,
+        mining_required = sMiningRequiredFrames,
+    })
 end
-
-
 
 local function get_build_system_state()
     return {
@@ -1416,15 +772,38 @@ local function get_build_system_state()
     }
 end
 
+local function get_footstep_material(mario)
+    if mario == nil or mario.pos == nil then return "stone" end
+    local x = math.floor((mario.pos.x or 0) / GRID_CELL_SIZE)
+    local z = math.floor((mario.pos.z or 0) / GRID_CELL_SIZE)
+    local y = math.floor(((mario.pos.y or 0) - 1) / GRID_CELL_SIZE)
+    for offset = 0, 2 do
+        local cell = sWorldBlocks[cell_key(x, y - offset, z)]
+        if cell ~= nil then
+            return Blocks.get_footstep_material(cell.id)
+        end
+    end
+    return "stone"
+end
+
+local function apply_steve_to_mario(m)
+    if m == nil or m.playerIndex ~= 0 then return end
+    Camera.update_health(m)
+    Camera.ensure(m)
+    local state = Physics.update(m, Sounds, get_footstep_material)
+    Model.apply_to_player(m, state)
+end
+
+
 local function on_warp()
-    sModelAppliedObject = nil
-    sLastSteveState = nil
-    sCurrentSteveAnimation = nil
-    sFirstPersonInitialized = false
-    sLastMarioHealth = nil
+    Model.reset()
+    Camera.reset()
+    Physics.reset()
     sMiningCellKey = nil
     sMiningFrames = 0
     sMiningRequiredFrames = 0
+    sPlaceButtonLatched = false
+    sLastPlaceFrame = nil
     deactivate_world_objects()
     sCurrentWorldKey = nil
     sCurrentWorldPrefix = nil
@@ -1433,19 +812,27 @@ end
 
 -- The CI harness exposes the pure generator only when explicitly requested.
 if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
-    __STEVECRAFT_TEST.build_animation = build_steve_animation
-    __STEVECRAFT_TEST.animation_value = steve_animation_value
-    __STEVECRAFT_TEST.animation_constants = {
-        frames = STEVE_ANIMATION_FRAMES,
-        parts = STEVE_ANIMATION_PARTS,
-        expected_index_length = 6 + (STEVE_ANIMATION_PARTS * 3 * 2),
+    __STEVECRAFT_TEST.build_animation = Model.build_animation
+    __STEVECRAFT_TEST.animation_value = Model.animation_value
+    __STEVECRAFT_TEST.animation_constants = Model.animation_constants
+    __STEVECRAFT_TEST.constants = Model.animation_constants
+    __STEVECRAFT_TEST.apply_player_update = apply_steve_to_mario
+    __STEVECRAFT_TEST.model = Model
+    __STEVECRAFT_TEST.modules = {
+        blocks = Blocks,
+        sounds = Sounds,
+        physics = Physics,
+        camera = Camera,
+        hud = HUD,
+        model = Model,
+        native_engine = Native,
     }
-    __STEVECRAFT_TEST.constants = __STEVECRAFT_TEST.animation_constants
     __STEVECRAFT_TEST.camera = {
-        ensure_first_person_camera = ensure_first_person_camera,
-        get_camera_ray = get_camera_ray,
+        ensure_first_person_camera = Camera.ensure,
+        get_camera_ray = Camera.get_ray,
         trace_voxel_ray = trace_voxel_ray,
-        health_to_half_hearts = health_to_half_hearts,
+        get_world_surface_hit = Camera.get_world_surface_hit,
+        health_to_half_hearts = Camera.health_to_half_hearts,
         mining_frames_for_hardness = mining_frames_for_hardness,
     }
     __STEVECRAFT_TEST.build_system = {
@@ -1476,9 +863,13 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         get_behavior_id = function() return sGridBlockBehaviorId end,
         render_inventory = render_build_inventory,
         handle_build_input = consume_build_controls,
+        is_place_button_latched = function() return sPlaceButtonLatched end,
     }
     return
 end
+
+Assets.import_all(STEVECRAFT_MOD_DIR)
+Sounds.load()
 
 -- Native Mario movement is retained. The invisible per-area grid creates real surface objects.
 hook_event(HOOK_MARIO_UPDATE, apply_steve_to_mario)

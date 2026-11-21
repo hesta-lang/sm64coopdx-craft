@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - stevecraft-normal-mod-alpha
+      - stevecraft-0.4.2-alpha
+      - stevecraft-0.4.1-alpha
     paths:
       - "tools/minecraft_block_data/**"
       - "tests/minecraft_block_data/**"
@@ -287,7 +289,7 @@ jobs:
             --layout mario_geo \
             --output "$RUNNER_TEMP/stevecraft-rig-audit.json"
 
-      - name: Upload Steve rig audit artifact
+      - name: Upload Steve rig audit artifacts
         uses: actions/upload-artifact@v4
         with:
           name: SteveCraft-Original-GeoLayout-Rig-Audit

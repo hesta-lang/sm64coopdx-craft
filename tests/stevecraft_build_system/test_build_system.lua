@@ -1,10 +1,73 @@
+package.path = "mods/stevecraft/?.lua;" .. package.path
+
 local storage = {}
 local spawned = {}
+local sync_spawn_calls = 0
+local local_spawn_calls = 0
 local hooks = {}
 local behavior = nil
 local collision_calls = 0
 local hud_lines = {}
 local hud_rect_calls = 0
+
+local audio_samples = {}
+local audio_events = {}
+function audio_sample_load(path)
+    local sample = { path = path }
+    audio_samples[path] = sample
+    return sample
+end
+function audio_sample_play(sample, position, volume)
+    audio_events[#audio_events + 1] = {
+        sample = sample, position = position, volume = volume,
+    }
+    return true
+end
+
+local modfs_file = nil
+local modfs_saved = false
+local modfs = { modPath = "stevecraft" }
+
+function modfs:get_file(path)
+    assert(path == "actors/minecraft_steve_geo.bin", "unexpected ModFS actor path")
+    return modfs_file
+end
+
+function modfs:create_file(path, is_text)
+    assert(path == "actors/minecraft_steve_geo.bin", "unexpected ModFS actor path")
+    assert(is_text == false, "DynOS actor must be stored as binary")
+    modfs_file = { size = 0, bytes = "", isText = is_text }
+    function modfs_file:set_text_mode(value) self.isText = value; return true end
+    function modfs_file:erase(count)
+        self.bytes = self.bytes:sub(math.min(#self.bytes + 1, count + 1))
+        self.size = #self.bytes
+        return true
+    end
+    function modfs_file:rewind() self.offset = 0; return true end
+    function modfs_file:write_bytes(value)
+        self.bytes = value
+        self.size = #value
+        return true
+    end
+    return modfs_file
+end
+
+function modfs:save()
+    modfs_saved = true
+    return true
+end
+
+function mod_fs_get() return modfs end
+function mod_fs_create() error("existing ModFS should be reused") end
+
+local model_lookup_names = {}
+function smlua_model_util_get_id(name)
+    model_lookup_names[#model_lookup_names + 1] = name
+    if name == "modfs:/stevecraft/actors/minecraft_steve_geo.bin" then
+        return 321
+    end
+    return E_MODEL_ERROR_MODEL
+end
 
 local function copy(source)
     local result = {}
@@ -31,12 +94,14 @@ D_JPAD = 1 << 10
 RESOLUTION_N64 = 1
 RESOLUTION_DJUI = 2
 FONT_NORMAL = 1
+MOD_FS_URI_FORMAT = "modfs:/%s/%s"
 
 gNetworkPlayers = {
     [0] = { currLevelNum = 1, currAreaIndex = 1 },
 }
 gCurrLevelNum = 1
 gCurrAreaIndex = 1
+gGlobalTimer = 1
 gGlobalObjectCollisionData = {
     breakable_box_seg8_collision_08012D70 = 777,
 }
@@ -67,12 +132,17 @@ end
 
 function hook_behavior(_, object_list, synchronized, init_callback, loop_callback)
     assert(object_list == OBJ_LIST_SURFACE, "block behavior must live in the surface object list")
-    assert(synchronized == true, "grid behavior must be eligible for network synchronization")
+    assert(synchronized == false, "local persistent grid must not register a synchronized behavior")
     behavior = { init = init_callback, loop = loop_callback }
     return 900
 end
 
-function spawn_sync_object(behavior_id, model_id, x, y, z, initialize)
+function spawn_sync_object(...)
+    sync_spawn_calls = sync_spawn_calls + 1
+    error("local persisted blocks must not use the network-synchronized spawn path")
+end
+
+function spawn_non_sync_object(behavior_id, model_id, x, y, z, initialize)
     assert(behavior_id == 900, "unexpected behavior ID")
     assert(model_id == E_MODEL_BREAKABLE_BOX, "unexpected block placeholder model")
     local object = {
@@ -82,11 +152,8 @@ function spawn_sync_object(behavior_id, model_id, x, y, z, initialize)
     if initialize then initialize(object) end
     behavior.init(object)
     spawned[#spawned + 1] = object
+    local_spawn_calls = local_spawn_calls + 1
     return object
-end
-
-function spawn_non_sync_object(...)
-    error("non-sync fallback should not be used when sync spawn succeeds")
 end
 
 function obj_scale(object, scale)
@@ -115,6 +182,7 @@ dofile("mods/stevecraft/main.lua")
 
 local animation = __STEVECRAFT_TEST.build_animation
 local build = __STEVECRAFT_TEST.build_system
+local model = __STEVECRAFT_TEST.model
 assert(type(animation) == "function", "animation generator export missing")
 assert(type(build) == "table", "build system export missing")
 assert(type(behavior) == "table", "custom surface behavior was not registered")
@@ -168,6 +236,8 @@ local function test_world_load_and_collision()
     assert(cell.object.scale == build.constants.object_scale)
     assert(cell.object.oCollisionDistance > 0)
     assert(cell.object.oDrawingDistance > 0)
+    assert(#spawned == 1 and local_spawn_calls == 1, "one placement created more than one object")
+    assert(sync_spawn_calls == 0, "grid attempted a second synchronized spawn path")
 
     local duplicate = build.place_grid_block(0, 0, 1)
     assert(duplicate == false, "occupied cell accepted a second block")
@@ -231,8 +301,42 @@ local function test_hotbar_and_input()
     assert(state().build_height_offset == 1)
     assert((m.controller.buttonPressed & U_JPAD) == 0)
 
+    -- Simulate duplicate A press callbacks in the same engine frame.
+    gGlobalTimer = 300
+    m.controller.buttonDown = L_TRIG | A_BUTTON
+    m.controller.buttonPressed = A_BUTTON
+    build.handle_build_input(m)
+    local after_first = state().block_count
+    assert(build.is_place_button_latched(), "first A press was not latched")
+
+    -- Repeat the touch press event on a later frame without releasing A.
+    gGlobalTimer = 301
+    m.controller.buttonDown = L_TRIG | A_BUTTON
+    m.controller.buttonPressed = A_BUTTON
+    build.handle_build_input(m)
+    assert(state().block_count == after_first,
+        "repeated A event across held frames created another block")
+    assert(build.is_place_button_latched(), "held A press unexpectedly cleared its latch")
+
+    -- A real release rearms placement. The next tap targets the same occupied cell.
+    m.controller.buttonDown = L_TRIG
+    m.controller.buttonPressed = 0
+    m.controller.buttonReleased = A_BUTTON
+    build.handle_build_input(m)
+    assert(not build.is_place_button_latched(), "A release did not rearm placement")
+
+    gGlobalTimer = 302
+    m.controller.buttonDown = L_TRIG | A_BUTTON
+    m.controller.buttonPressed = A_BUTTON
+    m.controller.buttonReleased = 0
+    build.handle_build_input(m)
+    assert(build.is_place_button_latched(), "new A press did not latch")
+    assert(state().block_count == after_first, "occupied cell spawned a second block")
+    assert(sync_spawn_calls == 0, "input handler used synchronized spawning")
+
     m.controller.buttonDown = 0
     m.controller.buttonPressed = 0
+    m.controller.buttonReleased = 0
     build.render_inventory()
     assert(#hud_lines >= 2, "inventory HUD did not render")
     print("PASS: hotbar selection, layer control, consumed inputs, and HUD")
@@ -287,7 +391,8 @@ local function test_per_area_persistence_and_chunk_limits()
     gNetworkPlayers[0].currAreaIndex = 1
     assert(build.ensure_world_loaded() == true)
     assert(state().world_key == "1_1_1")
-    assert(state().block_count == 2)
+    -- Two explicit blocks plus one block placed by the hotbar-input test.
+    assert(state().block_count == 3)
     assert(find_cell(1, 0, 0).id == "minecraft:bedrock")
     assert(find_cell(2, 0, 0).id == "minecraft:stone")
     print("PASS: per-area persistence, reload, cleanup, and bounded storage chunks")
@@ -346,7 +451,9 @@ test_block_limit()
 
 local function test_first_person_camera_and_voxel_ray()
     local camera = __STEVECRAFT_TEST.camera
+    local native = __STEVECRAFT_TEST.modules.native_engine
     assert(type(camera) == "table", "camera system export missing")
+    assert(type(native) == "table", "native engine adapter export missing")
 
     local hit_x, hit_y, hit_z, previous_x, previous_y, previous_z = camera.trace_voxel_ray(
         { x = 45, y = 45, z = 45 },
@@ -386,6 +493,31 @@ local function test_first_person_camera_and_voxel_ray()
     function get_first_person_enabled()
         return gFirstPersonCamera.enabled
     end
+    function sins(angle) return math.sin(angle * math.pi / 32768) end
+    function coss(angle) return math.cos(angle * math.pi / 32768) end
+    function collision_find_surface_on_ray(sx, sy, sz, dx, dy, dz, precision)
+        return {
+            surface = { normal = { x = 0, y = 1, z = 0 } },
+            hitPos = { x = sx + dx, y = sy + dy, z = sz + dz },
+            precision = precision,
+        }
+    end
+    function collision_find_floor(x, y, z)
+        return { queried = true, x = x, y = y, z = z }
+    end
+
+    local capabilities = native.capabilities()
+    assert(capabilities.host_c_player_physics == true, "host C physics ownership was not detected")
+    assert(capabilities.first_person_camera == true, "native first-person C API was not detected")
+    assert(capabilities.native_surface_ray == true, "native surface-ray C API was not detected")
+    local floor = native.find_floor(1, 2, 3)
+    assert(floor and floor.queried and floor.y == 2, "native C floor query did not pass through")
+    local snapshot = native.read_player_physics_state({
+        action = 7, forwardVel = 12, vel = { x = 1, y = 2, z = 3 },
+        pos = { x = 4, y = 5, z = 6 }, floor = {},
+    })
+    assert(snapshot.action == 7 and snapshot.forward_speed == 12 and snapshot.velocity_y == 2,
+        "MarioState C physics snapshot was not read correctly")
 
     local enabled = camera.ensure_first_person_camera({ faceAngle = { y = 0 } })
     assert(enabled == true and gFirstPersonCamera.enabled == true, "first-person camera did not enable")
@@ -397,6 +529,9 @@ local function test_first_person_camera_and_voxel_ray()
     local origin, direction = camera.get_camera_ray({ pos = { x = 0, y = 0, z = 0 } })
     assert(origin.x == 10 and origin.y == 110 and origin.z == 20, "camera ray did not use Lakitu's camera position")
     assert(math.abs(direction.z - 1) < 0.0001, "camera ray direction does not match the first-person view")
+    local surface_hit = camera.get_world_surface_hit(origin, direction, 100)
+    assert(surface_hit and surface_hit.precision == 2.0,
+        "surface ray did not route through native C collision query")
 
     build.render_inventory()
     assert(hud_rect_calls > 20, "first-person crosshair and pixel HUD did not render rectangles")
@@ -405,5 +540,99 @@ local function test_first_person_camera_and_voxel_ray()
     print("PASS: first-person setup, center-camera ray, voxel DDA, hearts, damage mapping, and hardness timing")
 end
 
+
 test_first_person_camera_and_voxel_ray()
+
+local function test_model_asset_registration()
+    assert(type(model) == "table", "model registration export missing")
+    local bytes = model.get_actor_binary()
+    assert(type(bytes) == "string", "embedded DYNOSBIN did not decode")
+    assert(#bytes == model.expected_binary_size, "embedded actor size mismatch")
+    assert(bytes:sub(1, 8) == "DYNOSBIN", "embedded actor header is invalid")
+
+    local uri = model.ensure_actor_in_modfs()
+    assert(uri == "modfs:/stevecraft/actors/minecraft_steve_geo.bin", "wrong ModFS actor URI")
+    assert(modfs_file ~= nil and modfs_file.bytes == bytes, "original actor bytes were not copied to ModFS")
+    assert(modfs_saved == true, "ModFS actor was not saved")
+
+    local model_id = model.load_actor()
+    assert(model_id == 321, "Steve model did not resolve from the ModFS URI")
+    assert(#model_lookup_names == 1, "loader attempted a fallback model name")
+    assert(model_lookup_names[1] == uri, "loader resolved a built-in symbol instead of the mod actor")
+    local update_function = __STEVECRAFT_TEST.apply_player_update
+    assert(type(update_function) == "function", "player update callback export missing")
+    local captured = {}
+    for index = 1, debug.getinfo(update_function, "u").nups do
+        local name, value = debug.getupvalue(update_function, index)
+        captured[name] = value
+    end
+    assert(type(captured.Camera) == "table", "player update did not bind the camera module")
+    assert(type(captured.Physics) == "table", "player update did not bind the physics module")
+    assert(type(captured.Model) == "table", "player update did not bind the model module")
+    print("PASS: embedded DYNOSBIN import and modular player callbacks")
+end
+
+local function test_separated_modules_and_audio()
+    local modules = __STEVECRAFT_TEST.modules
+    assert(type(modules) == "table", "subsystem module exports missing")
+    for _, name in ipairs({ "blocks", "sounds", "physics", "camera", "hud", "model", "native_engine" }) do
+        assert(type(modules[name]) == "table", "missing module: " .. name)
+    end
+
+    local sounds = modules.sounds
+    assert(sounds.load() == true, "sound samples did not load")
+    local expected_samples = {
+        "modfs:/stevecraft/assets/sounds/stone_step.ogg",
+        "modfs:/stevecraft/assets/sounds/dirt_step.ogg",
+        "modfs:/stevecraft/assets/sounds/grass_step.ogg",
+        "modfs:/stevecraft/assets/sounds/wood_step.ogg",
+        "modfs:/stevecraft/assets/sounds/stone_place.ogg",
+        "modfs:/stevecraft/assets/sounds/dirt_break.ogg",
+    }
+    for _, uri in ipairs(expected_samples) do
+        assert(audio_samples[uri] ~= nil, "missing imported Java sound: " .. uri)
+    end
+    local assets = require("systems/assets")
+    assert(assets.get_uri("sounds/stone_step.ogg")
+        == "modfs:/stevecraft/assets/sounds/stone_step.ogg",
+        "asset URI did not resolve through the active ModFS")
+
+    local physics = modules.physics
+    local walker = {
+        action = ACT_FLAG_MOVING,
+        forwardVel = 5,
+        floor = {},
+        pos = { x = 0, y = 0, z = 0 },
+        vel = { y = 0 },
+    }
+    gGlobalTimer = 700
+    local audio_baseline = #audio_events
+    local state_name = physics.update(walker, sounds, function() return "wood" end)
+    assert(state_name == "move", "movement adapter did not detect walking")
+    assert(#audio_events == audio_baseline + 1, "footstep sound did not fire exactly once")
+    assert(audio_events[audio_baseline + 1].sample.path == "modfs:/stevecraft/assets/sounds/wood_step.ogg", "wrong material footstep sound")
+    physics.update(walker, sounds, function() return "wood" end)
+    assert(#audio_events == audio_baseline + 1, "footstep cadence played twice in one frame")
+
+    sounds.play_place("minecraft:stone", walker.pos)
+    sounds.play_break("minecraft:dirt", walker.pos)
+    assert(audio_events[audio_baseline + 2].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
+    assert(audio_events[audio_baseline + 3].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
+    print("PASS: separate modules and original block/footstep sound playback")
+end
+
+test_separated_modules_and_audio()
+test_model_asset_registration()
+
+local modules = __STEVECRAFT_TEST.modules
+assert(type(modules) == "table", "modular subsystem exports missing")
+for _, name in ipairs({ "blocks", "sounds", "physics", "camera", "hud", "model" }) do
+    assert(type(modules[name]) == "table", "missing current subsystem module: " .. name)
+end
+assert(type(modules.blocks.catalog) == "table", "block catalogue was not loaded")
+assert(type(modules.sounds.play_place) == "function", "block audio adapter was not loaded")
+assert(type(modules.camera.get_ray) == "function", "first-person camera module was not loaded")
+assert(type(modules.hud.render) == "function", "HUD renderer was not loaded")
+print("PASS: current SteveCraft modules and ModFS resource URI adapter")
+
 print("SteveCraft build-system validation passed.")

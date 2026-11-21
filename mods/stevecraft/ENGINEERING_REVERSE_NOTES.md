@@ -241,3 +241,145 @@ grid/inventory logic. A successful test cannot substitute for Android
 verification of model scale, collision volume, block placement reach, and
 multiplayer behavior. This is the first dynamic-block prototype, not the final
 Minecraft voxel renderer or Java player-physics port.
+
+
+## 0.4.1-alpha — custom actor registration and first-person hand
+
+### Why the previous model lookup could select the wrong actor
+
+SM64CoopDX's `smlua_model_util_get_id(name)` resolves a GeoLayout name via
+DynOS. DynOS first looks through active levels, registered custom actors and
+loaded actors, then built-in actors. The string `mario_geo` is a built-in
+layout name. If the custom actor has not been added to DynOS, resolving that
+string can return Mario instead of Steve.
+
+A custom actor binary is loaded when DynOS receives its ModFS URI
+(`modfs:/<modPath>/<file>`). Placing a `.bin` in the mod's ordinary ZIP
+directory does not by itself create that ModFS entry. The 0.4.1-alpha loader
+therefore embeds the original DYNOSBIN as base64, imports the decoded bytes to
+`actors/minecraft_steve_geo.bin` in the active ModFS, persists the ModFS, and
+passes its URI to `smlua_model_util_get_id`. It never falls back to
+`mario_geo`; failed registration is retried with a cooldown.
+
+CI checks that the embedded bytes are exactly equal to the original binary
+and that the ModFS import/URI path works against a mocked API. This is not a
+substitute for loading the actor on Android.
+
+### First-person hand extraction audit
+
+The initial implementation tried to resolve `mario_geo_right_hand` after the
+Steve actor registered. The read-only rig audit found **zero** layouts with
+that name in `minecraft_steve_geo.bin`. This lookup is unsafe because DynOS
+checks built-in layouts after custom/loaded actors; it could therefore return
+Mario's built-in hand. The standalone hand renderer has been removed rather
+than showing the wrong model. A future extractor must locate and expose the
+actual hand display-list subtree from this actor, or add a separately verified
+SM64CoopDX-compatible hand asset before a camera-relative object is added.
+
+### Remaining gaps
+
+The Minecraft block catalogue's hardness and sound-event identifiers are
+metadata; actual Minecraft textures, block meshes, per-shape collision,
+Minecraft sound playback, and runtime skin texture replacement are still not
+implemented in 0.4.1-alpha. Hunger and armor bars remain nonfunctional visual
+indicators; hearts are driven by Mario's health and damage triggers the native
+camera shake callback.
+
+
+## 0.4.2-alpha — duplicate placement, modular systems, official Minecraft assets
+
+### Placement and object lifetime
+
+SM64CoopDX surface objects are created by registering one behavior with
+\`hook_behavior(..., OBJ_LIST_SURFACE, ...)\` and spawning a single object for
+each placed grid cell. The object's loop updates its transformed collision with
+\`load_object_collision_model()\`. The upstream reference implementation is
+the engine's Lua surface-collision example:
+
+- https://github.com/coop-deluxe/sm64coopdx/blob/master/docs/lua/examples/behavior-surface-collisions.lua
+
+\`spawn_sync_object\` is the preferred path because it creates a network-aware
+object. The local \`spawn_non_sync_object\` path is a fallback only for builds
+where the sync API is absent; a nil sync result is not proof that the engine
+did not create the synchronized object. The placement function also guards
+the same grid cell and world key against duplicate attempts within one
+\`gGlobalTimer\` frame. This makes repeated input idempotent for that cell.
+The Android game still needs a multiplayer/device test to confirm object
+ownership and network event ordering.
+
+### Official Minecraft HUD and resources
+
+The package workflow resolves Minecraft Java 26.3 through Mojang's official
+version manifest and asset index:
+https://piston-meta.mojang.com/mc/game/version_manifest_v2.json
+
+The extractor verifies every downloaded resource against the SHA-1 hash in
+that asset index and stores the original HUD sprites, block texture PNGs and
+selected block step/place/break OGG samples under the mod's \`assets/\` folder.
+At runtime, \`systems/assets.lua\` copies them into this mod's ModFS and loads
+the GUI sprites through \`get_texture_info(modfs_uri)\`; audio samples are
+registered by \`systems/sounds.lua\`.
+
+The visible HUD renderer uses the actual Java GUI sprite artwork for hotbar,
+selection, crosshair, hearts, food and armor. Its position/scaling and the
+remaining state behaviour are an SM64CoopDX adaptation, not a byte-for-byte
+port of Minecraft's GUI code. The XP bar is drawn only as a background until
+an XP progression system exists.
+
+The block textures are imported and used for hotbar item icons, but the
+placed cube's display list still uses the SM64 breakable-box placeholder.
+A dedicated cube DynOS actor with the correct six-face texture bindings is
+still required before the in-world blocks visually become Minecraft blocks.
+
+### Split subsystem files
+
+The mod now loads the following independent Lua modules from \`systems/\`:
+
+- \`blocks.lua\`: same-frame placement guard and block-object lifecycle helpers.
+- \`physics.lua\`: friction/ground-contact adapters; this is not yet a complete
+  Minecraft Java movement replacement.
+- \`camera.lua\`: first-person forward vector used by crosshair ray targeting.
+- \`hud.lua\`: source-sprite HUD renderer and normalized Java HUD layout.
+- \`sounds.lua\`: OGG sample registration and block/footstep event router.
+- \`models.lua\`: ModFS URI and custom model resolver helpers.
+- \`assets.lua\`: packaged resource installation and texture resolution.
+
+\`main.lua\` remains the coordinator and retains the existing model-import,
+world-state and Mario proxy code. The split is incremental: the remaining
+engine-facing routines still need to move behind these module interfaces as
+their dependencies are separated and tested.
+
+
+## 0.4.3-alpha — standalone native-engine integration boundary
+
+The 0.4.3 implementation deliberately keeps all game-specific code inside the
+independent mod. It does not modify SM64CoopDX C/C++ sources and does not load a
+custom shared library.
+
+The production Lua setup in `src/pc/lua/smlua.c` registers engine functions
+and C-object bindings, while the normal mod loader in `src/pc/mods/mod.c`
+collects Lua scripts and supported data/resource files. The standard runtime
+does not expose Lua's `package` dynamic loader, `io`, or `os` libraries for
+mods. Consequently, adding a new compiled C gameplay module to a standalone
+mod is not supported by this route.
+
+A new `systems/native_engine.lua` module now centralizes the engine-native
+interfaces that are already exposed:
+
+- The C first-person-camera API and `gFirstPersonCamera`.
+- C collision queries for ray hits and floor lookup.
+- Engine angle functions and the values populated in the C-owned `MarioState`.
+- The existing native object-collision and audio APIs.
+
+The camera and movement adapters use that shared interface rather than
+duplicating native API checks. Physics simulation itself remains inside
+SM64CoopDX's C engine; SteveCraft does not claim to replace gravity,
+acceleration, friction, jump impulses, or collision response with Minecraft's
+equations.
+
+The build-input handler also tracks the A-button press edge. Repeated
+`buttonPressed` callbacks while A remains down are ignored until release,
+while a subsequent press is accepted. Automated tests cover a repeated event on
+a later frame and the release/rearm path. Device-side touch behavior still
+requires verification on Android.
+
