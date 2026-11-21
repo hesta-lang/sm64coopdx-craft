@@ -1,4 +1,5 @@
 -- name: SteveCraft - Proxy-Driven Steve
+-- actor asset: actors/minecraft_steve_geo.bin
 -- description: Uses Steve movement on the existing Mario player object with the supplied Steve model as its renderer.
 -- incompatible: none
 -- pausable: true
