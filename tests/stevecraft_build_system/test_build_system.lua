@@ -368,7 +368,8 @@ local function test_per_area_persistence_and_chunk_limits()
     gNetworkPlayers[0].currAreaIndex = 1
     assert(build.ensure_world_loaded() == true)
     assert(state().world_key == "1_1_1")
-    assert(state().block_count == 2)
+    -- Two explicit blocks plus one block placed by the hotbar-input test.
+    assert(state().block_count == 3)
     assert(find_cell(1, 0, 0).id == "minecraft:bedrock")
     assert(find_cell(2, 0, 0).id == "minecraft:stone")
     print("PASS: per-area persistence, reload, cleanup, and bounded storage chunks")
