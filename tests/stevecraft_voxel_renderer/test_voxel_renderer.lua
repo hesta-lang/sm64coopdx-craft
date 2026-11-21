@@ -103,10 +103,12 @@ node.next = node
 
 local stone = {
     _pointer = 1001,
+    oPosX = 45, oPosY = 45, oPosZ = 45,
     header = { gfx = { sharedChild = node } },
 }
 local glass = {
     _pointer = 1002,
+    oPosX = 45, oPosY = 45, oPosZ = 45,
     header = { gfx = { sharedChild = node } },
 }
 
@@ -121,6 +123,35 @@ hooks[HOOK_BEFORE_GEO_PROCESS](node, 0)
 local stone_mesh = Renderer.get_mesh("minecraft:stone")
 assert(stone_mesh ~= nil and stone_mesh.vertex_count == 24, "stone cube did not build 24 vertices")
 assert(stone_mesh.command_count == #stone_mesh.gfx.buffer.commands, "stone Gfx command count mismatch")
+assert(stone_mesh.gfx ~= Renderer.get_mesh("minecraft:glass").gfx,
+    "per-object meshes unexpectedly share their Gfx buffer")
+local modulate_found = false
+for _, entry in ipairs(stone_mesh.gfx.buffer.commands) do
+    if entry.command == "gsDPSetCombineMode(G_CC_MODULATERGBA, G_CC_MODULATERGBA)" then
+        modulate_found = true
+    end
+end
+assert(modulate_found, "voxel renderer did not multiply texture colors by vertex shade")
+assert(stone_mesh.vtx.vertices[1].r == 204, "front side directional shade incorrect")
+assert(stone_mesh.vtx.vertices[9].r == 255, "top face directional shade incorrect")
+assert(stone_mesh.vtx.vertices[13].r == 128, "bottom face directional shade incorrect")
+local open_shading = Renderer.compute_face_shading({}, 0, 0, 0)
+assert(open_shading[1][1] > 0.79 and open_shading[1][1] < 0.81,
+    "front face direction factor incorrect")
+assert(open_shading[3][1] == 1.0, "top face should be brightest")
+assert(open_shading[4][1] == 0.5, "bottom face should be darkest")
+local ao_shading = Renderer.compute_face_shading({
+    ["1,0,1"] = { id = "minecraft:stone" },
+    ["0,1,1"] = { id = "minecraft:dirt" },
+}, 0, 0, 0)
+assert(ao_shading[1][4] < open_shading[1][4],
+    "adjacent opaque blocks did not darken the front-face corner")
+local glass_shading = Renderer.compute_face_shading({
+    ["1,0,1"] = { id = "minecraft:glass" },
+    ["0,1,1"] = { id = "minecraft:glass" },
+}, 0, 0, 0)
+assert(glass_shading[1][4] == open_shading[1][4],
+    "transparent glass should not darken ambient-occlusion corners")
 local point_filter_found = false
 for _, entry in ipairs(stone_mesh.gfx.buffer.commands) do
     if entry.command == "gsDPSetTextureFilter(G_TF_POINT)" then point_filter_found = true end
