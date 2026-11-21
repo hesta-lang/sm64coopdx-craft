@@ -66,8 +66,14 @@ function M.render(context)
     render_texture(textures.hotbar, layout.hotbar.x, layout.hotbar.y, layout.hotbar.w, layout.hotbar.h)
     render_texture(textures.hotbar_selection, layout.selected.x + (math.max(1, math.min(9, context.selected_slot or 1)) - 1) * 20 * layout.scale, layout.selected.y, layout.selected.w, layout.selected.h)
 
-    if context.show_offhand then
-        render_texture(textures.hotbar_offhand_left, layout.offhand_left.x, layout.offhand_left.y, layout.offhand_left.w, layout.offhand_left.h)
+    render_texture(textures.hotbar_offhand_left, layout.offhand_left.x, layout.offhand_left.y, layout.offhand_left.w, layout.offhand_left.h)
+    render_texture(textures.hotbar_offhand_right, layout.offhand_right.x, layout.offhand_right.y, layout.offhand_right.w, layout.offhand_right.h)
+    if textures.experience_background ~= nil then
+        render_texture(textures.experience_background, layout.experience.x, layout.experience.y, layout.experience.w, layout.experience.h)
+        local progress = math.max(0, math.min(1, tonumber(context.experience_progress) or 0))
+        if progress > 0 then
+            render_texture(textures.experience_progress, layout.experience.x, layout.experience.y, layout.experience.w * progress, layout.experience.h)
+        end
     end
 
     for index = 0, 9 do
