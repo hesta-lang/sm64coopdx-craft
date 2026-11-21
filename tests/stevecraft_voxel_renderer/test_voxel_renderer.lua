@@ -140,12 +140,17 @@ assert(open_shading[1][1] > 0.79 and open_shading[1][1] < 0.81,
     "front face direction factor incorrect")
 assert(open_shading[3][1] == 1.0, "top face should be brightest")
 assert(open_shading[4][1] == 0.5, "bottom face should be darkest")
+local facing_shading = Renderer.compute_face_shading({
+    ["0,0,1"] = { id = "minecraft:stone" },
+}, 0, 0, 0)
+assert(math.abs(facing_shading[1][1] - 0.64) < 0.001,
+    "facing solid-block sample did not apply Minecraft's 0.2 AO brightness")
 local ao_shading = Renderer.compute_face_shading({
     ["1,0,1"] = { id = "minecraft:stone" },
     ["0,1,1"] = { id = "minecraft:dirt" },
 }, 0, 0, 0)
-assert(ao_shading[1][4] < open_shading[1][4],
-    "adjacent opaque blocks did not darken the front-face corner")
+assert(math.abs(ao_shading[1][4] - 0.48) < 0.001,
+    "side/corner samples did not match Minecraft's four-sample AO average")
 local glass_shading = Renderer.compute_face_shading({
     ["1,0,1"] = { id = "minecraft:glass" },
     ["0,1,1"] = { id = "minecraft:glass" },
