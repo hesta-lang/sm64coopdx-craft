@@ -5,22 +5,12 @@
 local Sounds = {}
 local samples = {}
 local attempted = false
-local SAMPLE_COUNT = 6
+local SAMPLE_COUNT = 2
+local Assets = require("assets")
 
 local sample_files = {
-    stone_step = "sounds/stone_step.ogg",
-    dirt_step = "sounds/dirt_step.ogg",
-    grass_step = "sounds/grass_step.ogg",
-    wood_step = "sounds/wood_step.ogg",
-    block_place = "sounds/block_place.ogg",
-    block_break = "sounds/block_break.ogg",
-}
-
-local material_sounds = {
-    stone = "stone_step",
-    dirt = "dirt_step",
-    grass = "grass_step",
-    wood = "wood_step",
+    footstep = "sounds/footstep.ogg",
+    block = "sounds/block.ogg",
 }
 
 local function current_position(position)
@@ -40,7 +30,11 @@ function Sounds.load()
 
     local loaded = 0
     for name, path in pairs(sample_files) do
-        local ok, sample = pcall(audio_sample_load, path)
+        local uri = Assets.get_uri(path)
+        local ok, sample = false, nil
+        if uri ~= nil then
+            ok, sample = pcall(audio_sample_load, uri)
+        end
         if ok and sample ~= nil then
             samples[name] = sample
             loaded = loaded + 1
@@ -61,18 +55,23 @@ function Sounds.play(name, position, volume)
 end
 
 function Sounds.play_place(block_id, position)
-    local volume = block_id == "minecraft:glass" and 0.45 or 0.7
-    return Sounds.play("block_place", position, volume)
+    local volume = block_id == "minecraft:glass" and 0.42 or 0.62
+    return Sounds.play("block", position, volume)
 end
 
 function Sounds.play_break(block_id, position)
-    local volume = block_id == "minecraft:glass" and 0.8 or 0.9
-    return Sounds.play("block_break", position, volume)
+    local volume = block_id == "minecraft:glass" and 0.82 or 0.92
+    return Sounds.play("block", position, volume)
 end
 
 function Sounds.play_footstep(material, position, volume)
-    local sound_name = material_sounds[material or "stone"] or "stone_step"
-    return Sounds.play(sound_name, position, volume or 0.48)
+    local material_gain = {
+        stone = 0.52,
+        dirt = 0.43,
+        grass = 0.38,
+        wood = 0.49,
+    }
+    return Sounds.play("footstep", position, volume or material_gain[material or "stone"] or 0.48)
 end
 
 return Sounds
