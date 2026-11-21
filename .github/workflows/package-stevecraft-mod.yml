@@ -6,7 +6,7 @@ on:
       - android
       - stevecraft-normal-mod-alpha
       - stevecraft-0.4.2-alpha
-      - stevecraft-0.4.4-alpha
+      - stevecraft-0.4.5-alpha
       - stevecraft-0.4.1-alpha
     paths:
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
@@ -74,12 +74,6 @@ jobs:
             --asset-root mods/stevecraft/assets \
             --output mods/stevecraft/systems/embedded_block_textures.lua
 
-      - name: Embed official block textures, HUD textures and sounds for production Lua
-        run: |
-          python3 tools/stevecraft_assets/embed_block_textures.py \
-            --asset-root mods/stevecraft/assets \
-            --output mods/stevecraft/systems/embedded_block_textures.lua
-
       - name: Validate Lua syntax
         run: |
           for file in mods/stevecraft/*.lua mods/stevecraft/systems/*.lua; do
@@ -117,7 +111,7 @@ jobs:
 
           main = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
           required = (
-              'local STEVECRAFT_VERSION = "0.4.4-alpha"',
+              'local STEVECRAFT_VERSION = "0.4.5-alpha"',
               'stevecraft_load_module("model", "model")',
               "Blocks.spawn_once(",
               "GRID_MAX_BLOCKS_PER_AREA = 128",
@@ -158,36 +152,41 @@ jobs:
           lua5.3 tests/stevecraft_voxel_renderer/test_assets.lua
           lua5.3 tests/stevecraft_voxel_renderer/test_voxel_renderer.lua
           python3 tests/stevecraft_voxel_renderer/test_embed_assets.py
+          test -s mods/stevecraft/systems/grid_transform.lua
           test -s mods/stevecraft/systems/embedded_block_textures.lua
           grep -q "stevecraft_voxel_" mods/stevecraft/systems/voxel_renderer.lua
           grep -q "HOOK_BEFORE_GEO_PROCESS" mods/stevecraft/systems/voxel_renderer.lua
 
-      - name: Validate voxel renderer and embedded resources
+      - name: Validate footsteps, grid transform, and HUD resource paths
         run: |
-          test -s mods/stevecraft/systems/embedded_block_textures.lua
-          grep -q "stevecraft_voxel_" mods/stevecraft/systems/voxel_renderer.lua
-          grep -q "HOOK_BEFORE_GEO_PROCESS" mods/stevecraft/systems/voxel_renderer.lua
+          lua5.3 tests/stevecraft_voxel_renderer/test_audio.lua
+          lua5.3 tests/stevecraft_voxel_renderer/test_grid_transform.lua
+          lua5.3 tests/stevecraft_voxel_renderer/test_hud.lua
+          grep -q "HOOK_ON_PLAY_SOUND" mods/stevecraft/main.lua
+          grep -q "GridTransform.apply(obj, GRID_CELL_SIZE)" mods/stevecraft/main.lua
+          ! grep -q 'textures/hud/hotbar' mods/stevecraft/hud.lua
 
       - name: Package standalone mod and engineering notes
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.4-alpha.zip" main.lua assets.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.5-alpha.zip" main.lua assets.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
 
       - name: Verify package contents
         run: |
-          unzip -t SteveCraft-0.4.4-alpha.zip
-          unzip -l SteveCraft-0.4.4-alpha.zip | grep -q " assets.lua"
-          unzip -l SteveCraft-0.4.4-alpha.zip | grep -q " systems/assets.lua"
-          unzip -l SteveCraft-0.4.4-alpha.zip | grep -q " systems/voxel_renderer.lua"
-          unzip -l SteveCraft-0.4.4-alpha.zip | grep -q " systems/embedded_block_textures.lua"
-          unzip -l SteveCraft-0.4.4-alpha.zip
-          unzip -p SteveCraft-0.4.4-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
-          unzip -p SteveCraft-0.4.4-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
+          unzip -t SteveCraft-0.4.5-alpha.zip
+          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " assets.lua"
+          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/assets.lua"
+          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/voxel_renderer.lua"
+          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/embedded_block_textures.lua"
+          unzip -l SteveCraft-0.4.5-alpha.zip | grep -q " systems/grid_transform.lua"
+          unzip -l SteveCraft-0.4.5-alpha.zip
+          unzip -p SteveCraft-0.4.5-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
+          unzip -p SteveCraft-0.4.5-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.4.4-alpha
-          path: SteveCraft-0.4.4-alpha.zip
+          name: SteveCraft-0.4.5-alpha
+          path: SteveCraft-0.4.5-alpha.zip
           if-no-files-found: error
           retention-days: 14

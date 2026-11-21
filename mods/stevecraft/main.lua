@@ -3,7 +3,7 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.4-alpha"
+local STEVECRAFT_VERSION = "0.4.5-alpha"
 
 -- Resolve modules relative to this mod instead of depending on the host's
 -- current working directory or a globally configured Lua package.path.
@@ -43,6 +43,7 @@ end
 -- Gameplay modules are siblings of main.lua; engine and asset adapters live in systems/.
 local Assets = stevecraft_load_module("systems/assets", "systems/assets")
 local VoxelRenderer = stevecraft_load_module("systems/voxel_renderer", "systems/voxel_renderer")
+local GridTransform = stevecraft_load_module("systems/grid_transform", "systems/grid_transform")
 local Native = stevecraft_load_module("systems/native_engine", "systems/native_engine")
 local Blocks = stevecraft_load_module("blocks", "blocks")
 local Sounds = stevecraft_load_module("sounds", "sounds")
@@ -309,11 +310,15 @@ local function grid_block_init(obj)
     if type(obj_scale) == "function" then
         obj_scale(obj, GRID_OBJECT_SCALE)
     end
+    GridTransform.apply(obj, GRID_CELL_SIZE)
     local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
     if block_id then VoxelRenderer.attach(obj, block_id) end
 end
 
 local function grid_block_loop(obj)
+    -- Keep every placed block snapped to the exact same grid and zero all
+    -- Euler angles/angular velocity before collision and GeoLayout processing.
+    GridTransform.apply(obj, GRID_CELL_SIZE)
     local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
     if block_id then VoxelRenderer.attach(obj, block_id) end
 
@@ -359,6 +364,7 @@ local function spawn_grid_block(block_id, x, y, z)
     local function initialize(obj)
         obj.oBehParams2ndByte = definition.index
         obj.oAnimState = 0
+        GridTransform.apply(obj, GRID_CELL_SIZE)
         VoxelRenderer.attach(obj, block_id)
     end
 
@@ -790,6 +796,15 @@ local function get_footstep_material(mario)
             return Blocks.get_footstep_material(cell.id)
         end
     end
+    -- When Mario is not walking on a SteveCraft voxel, respect the host
+    -- level's terrain classification instead of always forcing stone.
+    local addend = tonumber(mario.terrainSoundAddend) or 0
+    local terrain = (math.floor(addend / 0x10000)) & 0xFF
+    if terrain == (SOUND_TERRAIN_GRASS or 1) then return "grass" end
+    if terrain == (SOUND_TERRAIN_SAND or 7) then return "sand" end
+    if terrain == (SOUND_TERRAIN_SNOW or 5) or terrain == (SOUND_TERRAIN_ICE or 6) then
+        return "dirt"
+    end
     return "stone"
 end
 
@@ -834,6 +849,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         model = Model,
         native_engine = Native,
         voxel_renderer = VoxelRenderer,
+        grid_transform = GridTransform,
     }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = Camera.ensure,
@@ -881,7 +897,12 @@ VoxelRenderer.configure(Assets.get_block_textures())
 VoxelRenderer.install_hooks()
 Sounds.load()
 
--- Native Mario movement is retained. The invisible per-area grid creates real surface objects.
+-- Replace only Mario's native footstep sounds; all other C audio is untouched.
+if type(HOOK_ON_PLAY_SOUND) == "number" then
+    hook_event(HOOK_ON_PLAY_SOUND, Sounds.filter_mario_footstep)
+end
+
+-- Native Mario movement is retained. The per-area grid creates real surface objects.
 hook_event(HOOK_MARIO_UPDATE, apply_steve_to_mario)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, consume_build_controls)
 hook_event(HOOK_ON_HUD_RENDER, render_build_inventory)

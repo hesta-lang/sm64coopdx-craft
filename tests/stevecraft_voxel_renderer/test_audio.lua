@@ -1,0 +1,26 @@
+package.path = "mods/stevecraft/?.lua;" .. package.path
+
+local Sounds = require("sounds")
+assert(Sounds.is_mario_footstep_sound(0x06108080), "normal Mario step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x06178080), "terrain-addended step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x06208080), "tiptoe step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x06278080), "terrain-addended tiptoe step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x042A9080), "metal step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x042D8080), "hanging step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x042E0080), "quicksand step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x042F9080), "metal tiptoe step was not recognized")
+assert(Sounds.is_mario_footstep_sound(0x04529080), "metal water step was not recognized")
+
+assert(Sounds.filter_mario_footstep(0x06108080) == 0, "native step sound was not suppressed")
+assert(Sounds.filter_mario_footstep(0x04008080) == nil, "jump sound was incorrectly suppressed")
+assert(Sounds.filter_mario_footstep(0x14108080) == nil, "moving sound bank was incorrectly suppressed")
+assert(Sounds.filter_mario_footstep(0x14000000) == nil, "slide sound was incorrectly suppressed")
+
+local Blocks = require("blocks")
+assert(Blocks.get_footstep_material("minecraft:grass_block") == "grass")
+assert(Blocks.get_footstep_material("minecraft:dirt") == "dirt")
+assert(Blocks.get_footstep_material("minecraft:oak_planks") == "wood")
+assert(Blocks.get_footstep_material("minecraft:glass") == "glass")
+assert(Blocks.get_footstep_material("minecraft:sand") == "sand")
+assert(Blocks.get_footstep_material("minecraft:bedrock") == "stone")
+print("PASS: native Mario footstep suppression and per-block Minecraft step material routing")

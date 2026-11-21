@@ -94,13 +94,46 @@ end
 
 function Sounds.play_footstep(material, position, volume)
     material = type(material) == "string" and material:lower() or "stone"
-    if material == "oak" or material == "planks" then material = "wood" end
+    if material == "oak" or material == "planks" or material == "log" then material = "wood" end
     if samples[material .. "_step"] == nil then material = "stone" end
     local gains = {
         stone = 0.52, dirt = 0.43, grass = 0.38,
         wood = 0.49, glass = 0.45, sand = 0.40,
     }
     return Sounds.play(material .. "_step", position, volume or gains[material] or 0.48)
+end
+
+-- HOOK_ON_PLAY_SOUND is called for each native C sound request. Replace only
+-- Mario's ground-step IDs; jump, landing, voice, slide and world sounds remain.
+local function is_mario_footstep_sound(sound_bits)
+    if type(sound_bits) ~= "number" then return false end
+    local bank = (sound_bits >> 28) & 0x0F
+    if bank ~= 0 then return false end -- SOUND_BANK_ACTION only
+
+    local sound_id = (sound_bits >> 16) & 0xFF
+    -- TERRAIN_STEP / TERRAIN_STEP_TIPTOE plus the 0..7 terrain addend.
+    if (sound_id >= 0x10 and sound_id <= 0x17)
+        or (sound_id >= 0x20 and sound_id <= 0x27) then
+        return true
+    end
+
+    -- Metal, hanging, quicksand and water-specific step variants.
+    return sound_id == 0x2A
+        or sound_id == 0x2D
+        or sound_id == 0x2E
+        or sound_id == 0x2F
+        or sound_id == 0x52
+end
+
+function Sounds.is_mario_footstep_sound(sound_bits)
+    return is_mario_footstep_sound(sound_bits)
+end
+
+function Sounds.filter_mario_footstep(sound_bits, _position)
+    if is_mario_footstep_sound(sound_bits) then
+        return 0 -- NO_SOUND: prevents the original Mario sample from being queued.
+    end
+    return nil -- let every non-footstep sound pass unchanged
 end
 
 return Sounds

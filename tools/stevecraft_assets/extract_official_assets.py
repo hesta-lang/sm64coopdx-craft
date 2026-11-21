@@ -189,6 +189,15 @@ def main() -> int:
         "textures/gui/sprites/hud/hotbar.png",
         "textures/gui/sprites/hud/hotbar_selection.png",
         "textures/gui/sprites/hud/crosshair.png",
+        "textures/gui/sprites/hud/heart/full.png",
+        "textures/gui/sprites/hud/heart/half.png",
+        "textures/gui/sprites/hud/heart/container.png",
+        "textures/gui/sprites/hud/food_full.png",
+        "textures/gui/sprites/hud/food_half.png",
+        "textures/gui/sprites/hud/food_empty.png",
+        "textures/gui/sprites/hud/armor_full.png",
+        "textures/gui/sprites/hud/armor_half.png",
+        "textures/gui/sprites/hud/armor_empty.png",
         "textures/block/stone.png",
     ):
         if required not in copied:

@@ -1,0 +1,78 @@
+package.path = "mods/stevecraft/?.lua;" .. package.path
+
+local allowed = {}
+for _, path in ipairs({
+    "textures/gui/sprites/hud/hotbar.png",
+    "textures/gui/sprites/hud/hotbar_selection.png",
+    "textures/gui/sprites/hud/crosshair.png",
+    "textures/gui/sprites/hud/heart/full.png",
+    "textures/gui/sprites/hud/heart/half.png",
+    "textures/gui/sprites/hud/heart/container.png",
+    "textures/gui/sprites/hud/food_full.png",
+    "textures/gui/sprites/hud/food_half.png",
+    "textures/gui/sprites/hud/food_empty.png",
+    "textures/gui/sprites/hud/armor_full.png",
+    "textures/gui/sprites/hud/armor_half.png",
+    "textures/gui/sprites/hud/armor_empty.png",
+    "textures/block/stone.png",
+    "textures/block/dirt.png",
+    "textures/block/grass_block_top.png",
+    "textures/block/oak_planks.png",
+    "textures/block/cobblestone.png",
+    "textures/block/glass.png",
+    "textures/block/bricks.png",
+    "textures/block/sand.png",
+    "textures/block/bedrock.png",
+}) do
+    allowed[path] = true
+end
+
+local requested = {}
+local draw_calls = 0
+MOD_FS_URI_FORMAT = "modfs:/%s/%s"
+function mod_fs_get() return { modPath = "SteveCraft" } end
+function get_texture_info(uri)
+    local prefix = "modfs:/SteveCraft/assets/"
+    assert(uri:sub(1, #prefix) == prefix, "HUD used the wrong ModFS root: " .. tostring(uri))
+    local path = uri:sub(#prefix + 1)
+    assert(allowed[path] == true, "HUD requested an unbundled/wrong texture path: " .. path)
+    requested[path] = true
+    return { texture = { name = path }, width = 16, height = 16, name = path }
+end
+
+RESOLUTION_DJUI = 1
+FONT_NORMAL = 1
+function djui_hud_set_resolution() end
+function djui_hud_set_font() end
+function djui_hud_get_screen_width() return 320 end
+function djui_hud_get_screen_height() return 240 end
+function djui_hud_render_texture() draw_calls = draw_calls + 1 end
+function djui_hud_render_texture_tile() error("old atlas/tile renderer must not be used") end
+function djui_hud_set_color() end
+function djui_hud_render_rect() end
+function djui_hud_print_text() end
+
+local HUD = require("hud")
+HUD.render({
+    inventory_loaded = true,
+    inventory = {
+        [1] = { id = "minecraft:stone", count = 64 },
+        [2] = { id = "minecraft:grass_block", count = 63 },
+    },
+    selected_slot = 1,
+    health_points = 20,
+    hunger_points = 20,
+    armor_points = 0,
+    camera_active = true,
+    catalog = { ["minecraft:stone"] = { name = "Stone" } },
+})
+
+assert(requested["textures/gui/sprites/hud/hotbar.png"], "hotbar sprite was not loaded")
+assert(requested["textures/gui/sprites/hud/hotbar_selection.png"], "selection sprite was not loaded")
+assert(requested["textures/gui/sprites/hud/heart/full.png"], "heart sprite was not loaded")
+assert(requested["textures/block/stone.png"], "stone inventory icon was not loaded")
+assert(requested["textures/block/grass_block_top.png"], "grass icon was not loaded")
+assert(requested["textures/hud/hotbar_selection.png"] ~= true, "obsolete HUD path was requested")
+assert(requested["textures/stevecraft_atlas.png"] ~= true, "missing atlas path was requested")
+assert(draw_calls > 10, "HUD did not render individual sprite textures")
+print("PASS: HUD paths resolve to embedded files; no obsolete hud folder or missing atlas lookup")

@@ -45,7 +45,7 @@ Blocks.catalog = {
         name = "Glass", short = "GL", index = 6,
         destroy_speed = 0.3, explosion_resistance = 0.3, friction = 0.6,
         texture = "blocks/glass",
-        break_sound = "stone", step_sound = "stone", place_sound = "stone",
+        break_sound = "stone", step_sound = "glass", place_sound = "stone",
         collision = "full_cube",
     },
     ["minecraft:bricks"] = {
@@ -59,7 +59,7 @@ Blocks.catalog = {
         name = "Sand", short = "SA", index = 8,
         destroy_speed = 0.5, explosion_resistance = 0.5, friction = 0.6,
         texture = "blocks/sand",
-        break_sound = "dirt", step_sound = "dirt", place_sound = "dirt",
+        break_sound = "dirt", step_sound = "sand", place_sound = "dirt",
         collision = "full_cube",
     },
     ["minecraft:bedrock"] = {
@@ -184,8 +184,14 @@ function Blocks.get_texture(block_id)
 end
 
 function Blocks.get_footstep_material(block_id)
-    local definition = Blocks.catalog[block_id]
-    return definition and definition.step_sound or "stone"
+    local id = type(block_id) == "string" and block_id:lower() or ""
+    if id:find("glass", 1, true) then return "glass" end
+    if id:find("sand", 1, true) then return "sand" end
+    if id:find("grass", 1, true) then return "grass" end
+    if id:find("dirt", 1, true) or id:find("gravel", 1, true) then return "dirt" end
+    if id:find("wood", 1, true) or id:find("planks", 1, true)
+        or id:find("log", 1, true) then return "wood" end
+    return "stone"
 end
 
 return Blocks

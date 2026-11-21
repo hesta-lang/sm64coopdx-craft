@@ -1,9 +1,9 @@
-# SteveCraft 0.4.4-alpha — dynamic voxel display-list prototype
+# SteveCraft 0.4.5-alpha — material footsteps, grid-locked blocks, and repaired HUD
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
 
-## Native C engine bridge (0.4.4-alpha)
+## Native C engine bridge (0.4.5-alpha)
 
 This release keeps SteveCraft as an independent mod ZIP. It does not ship a
 custom `.so`, modify the SM64CoopDX executable, or require a rebuilt APK.
@@ -108,9 +108,19 @@ dynamic surface objects that load collision through
 - This is an isolated renderer prototype, not a chunk mesher: each block still
   draws six faces, even when faces are hidden against neighboring blocks.
   The current full-cube breakable-box collision mesh is unchanged.
-- Block PNGs and available OGG samples are embedded by GitHub Actions as a
+- Block PNGs, HUD sprites and OGG samples are embedded by GitHub Actions as a
   Lua Base64 manifest, then written to ModFS through the game's own API. This
   avoids depending on production Lua builds exposing `io.open`.
+- Native Mario ground-step sound requests are filtered through
+  `HOOK_ON_PLAY_SOUND`; only footstep sound IDs are replaced. Jump, landing,
+  slide, voice and world sounds remain untouched. SteveCraft plays the Java
+  sample selected from the voxel or host-terrain material.
+- Every placed block is snapped to the exact center of its 90-unit grid cell.
+  Pitch, yaw, roll and angular velocity are reset on spawn and every object
+  update, so grid blocks do not inherit an incline or drift off the lattice.
+- The HUD now requests the real embedded paths under
+  `textures/gui/sprites/hud/` and renders individual sprites. It no longer
+  requests the nonexistent `textures/hud/` folder or an unbundled atlas.
 - The catalogue includes Java 26.3 destroy speed, explosion resistance,
   friction, and sound-event IDs. Mining time uses a simple prototype scaling
   based on destroy speed; tool tiers and Java's complete breaking-speed
@@ -150,6 +160,8 @@ GitHub Actions checks:
 - Runtime Gfx/Vtx mesh construction, per-object GeoLayout pointer swapping,
   glass transparency layer selection, and restoration of the vanilla model.
 - Binary resource embedding and Base64 decoding for production ModFS import.
+- Mario step-sound filtering, material-to-Minecraft-audio selection,
+  zero-rotation grid transforms and exact embedded HUD resource paths.
 - Embedded DYNOSBIN byte count/header and ModFS import/URI resolution using a
   mocked ModFS API.
 - Grid coordinate math, inventory accounting, placement/removal, dynamic
