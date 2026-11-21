@@ -348,3 +348,38 @@ The mod now loads the following independent Lua modules from \`systems/\`:
 world-state and Mario proxy code. The split is incremental: the remaining
 engine-facing routines still need to move behind these module interfaces as
 their dependencies are separated and tested.
+
+
+## 0.4.3-alpha — standalone native-engine integration boundary
+
+The 0.4.3 implementation deliberately keeps all game-specific code inside the
+independent mod. It does not modify SM64CoopDX C/C++ sources and does not load a
+custom shared library.
+
+The production Lua setup in `src/pc/lua/smlua.c` registers engine functions
+and C-object bindings, while the normal mod loader in `src/pc/mods/mod.c`
+collects Lua scripts and supported data/resource files. The standard runtime
+does not expose Lua's `package` dynamic loader, `io`, or `os` libraries for
+mods. Consequently, adding a new compiled C gameplay module to a standalone
+mod is not supported by this route.
+
+A new `systems/native_engine.lua` module now centralizes the engine-native
+interfaces that are already exposed:
+
+- The C first-person-camera API and `gFirstPersonCamera`.
+- C collision queries for ray hits and floor lookup.
+- Engine angle functions and the values populated in the C-owned `MarioState`.
+- The existing native object-collision and audio APIs.
+
+The camera and movement adapters use that shared interface rather than
+duplicating native API checks. Physics simulation itself remains inside
+SM64CoopDX's C engine; SteveCraft does not claim to replace gravity,
+acceleration, friction, jump impulses, or collision response with Minecraft's
+equations.
+
+The build-input handler also tracks the A-button press edge. Repeated
+`buttonPressed` callbacks while A remains down are ignored until release,
+while a subsequent press is accepted. Automated tests cover a repeated event on
+a later frame and the release/rearm path. Device-side touch behavior still
+requires verification on Android.
+
