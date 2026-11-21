@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Extract the exact Minecraft Java HUD, block textures and selected sounds."""
+"""Extract official Minecraft Java HUD/block PNGs from the client JAR and sounds from the asset index."""
 from __future__ import annotations
+
 import argparse
+import hashlib
 import json
 import pathlib
-import hashlib
+import tempfile
 import urllib.request
+import zipfile
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+USER_AGENT = "SteveCraft-official-assets/1.1"
+
 HUD_TEXTURES = [
     "textures/gui/sprites/hud/hotbar.png",
     "textures/gui/sprites/hud/hotbar_selection.png",
@@ -59,15 +64,20 @@ SOUND_EVENTS = {
     "sand_break": "block.sand.break",
 }
 
+
+def request(url: str, timeout: int = 60):
+    return urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+
+
 def fetch_json(url: str):
-    request = urllib.request.Request(url, headers={"User-Agent": "SteveCraft asset extractor"})
-    with urllib.request.urlopen(request, timeout=45) as response:
+    with urllib.request.urlopen(request(url), timeout=60) as response:
         return json.load(response)
 
+
 def fetch_bytes(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "SteveCraft asset extractor"})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request(url), timeout=90) as response:
         return response.read()
+
 
 def download_index_asset(index: dict, key: str) -> bytes:
     entry = index.get("objects", {}).get(key)
@@ -80,11 +90,44 @@ def download_index_asset(index: dict, key: str) -> bytes:
         raise ValueError(f"SHA-1 mismatch for {key}: expected {digest}, got {actual}")
     return data
 
+
 def write_asset(root: pathlib.Path, relative: str, data: bytes):
     destination = root / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(data)
     return destination
+
+
+def download_and_extract_textures(version_metadata: dict, output: pathlib.Path):
+    """Textures live in the official client JAR, not the launcher asset index."""
+    client = version_metadata.get("downloads", {}).get("client")
+    if not isinstance(client, dict) or not client.get("url") or not client.get("sha1"):
+        raise ValueError("Official client JAR metadata is missing URL or SHA-1.")
+    digest = hashlib.sha1()
+    copied, missing = [], []
+    with tempfile.TemporaryDirectory(prefix="stevecraft-mc-") as temporary:
+        jar_path = pathlib.Path(temporary) / "client.jar"
+        with urllib.request.urlopen(request(client["url"], timeout=90), timeout=120) as response, jar_path.open("wb") as target:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                target.write(chunk)
+        actual = digest.hexdigest()
+        if actual.lower() != client["sha1"].lower():
+            raise ValueError(f"Client JAR SHA-1 mismatch: expected {client['sha1']}, got {actual}")
+        with zipfile.ZipFile(jar_path) as archive:
+            available = set(archive.namelist())
+            for relative in HUD_TEXTURES + BLOCK_TEXTURES:
+                jar_key = "assets/minecraft/" + relative
+                if jar_key not in available:
+                    missing.append(relative)
+                    continue
+                write_asset(output, relative, archive.read(jar_key))
+                copied.append(relative)
+    return copied, missing, actual
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -97,19 +140,14 @@ def main() -> int:
     if release is None:
         raise SystemExit(f"Minecraft Java version {args.version!r} is not in the official manifest.")
     metadata = fetch_json(release["url"])
-    asset_index = fetch_json(metadata["assetIndex"]["url"])
-    assets = args.output
+    asset_index_info = metadata.get("assetIndex")
+    if not isinstance(asset_index_info, dict) or not asset_index_info.get("url"):
+        raise SystemExit("Official version metadata has no launcher asset index URL.")
+    asset_index = fetch_json(asset_index_info["url"])
 
-    copied = []
-    missing = []
-    for relative in HUD_TEXTURES + BLOCK_TEXTURES:
-        key = "minecraft/" + relative
-        try:
-            data = download_index_asset(asset_index, key)
-            write_asset(assets, relative, data)
-            copied.append(relative)
-        except KeyError:
-            missing.append(relative)
+    assets = args.output
+    assets.mkdir(parents=True, exist_ok=True)
+    copied, missing, client_sha1 = download_and_extract_textures(metadata, assets)
 
     try:
         sounds = json.loads(download_index_asset(asset_index, "minecraft/sounds.json"))
@@ -123,7 +161,7 @@ def main() -> int:
             missing.append("sounds.json:" + event_name)
             continue
         candidates = entry.get("sounds", [])
-        source = next((item for item in candidates if isinstance(item, dict) or isinstance(item, str)), None)
+        source = next((item for item in candidates if isinstance(item, (dict, str))), None)
         if source is None:
             missing.append("sounds.json:" + event_name)
             continue
@@ -139,17 +177,24 @@ def main() -> int:
 
     report = {
         "minecraft_version": args.version,
+        "client_jar_sha1": client_sha1,
         "hud_and_block_textures": copied,
         "sounds": sound_copied,
         "missing": missing,
     }
     (assets / "stevecraft-assets.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
-    if not any(path.startswith("textures/gui/sprites/hud/hotbar") for path in copied):
-        raise SystemExit("The official Minecraft hotbar sprite was not extracted.")
-    if not any(path.startswith("textures/block/stone") for path in copied):
-        raise SystemExit("The official Minecraft stone block texture was not extracted.")
+
+    for required in (
+        "textures/gui/sprites/hud/hotbar.png",
+        "textures/gui/sprites/hud/hotbar_selection.png",
+        "textures/gui/sprites/hud/crosshair.png",
+        "textures/block/stone.png",
+    ):
+        if required not in copied:
+            raise SystemExit(f"Required official Minecraft texture was not extracted: {required}")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
