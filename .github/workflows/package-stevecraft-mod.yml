@@ -49,13 +49,16 @@ jobs:
           import base64
           import hashlib
           import pathlib
-          import re
-
           source = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
-          match = re.search(r"local STEVE_GEO_BASE64 = \\[\\[(.*?)\\]\\]", source, re.S)
-          if not match:
+          marker = "local STEVE_GEO_BASE64 = [["
+          start = source.find(marker)
+          if start < 0:
               raise SystemExit("Embedded Steve DYNOSBIN payload is missing.")
-          encoded = re.sub(r"\\s+", "", match.group(1))
+          start += len(marker)
+          end = source.find("]]", start)
+          if end < 0:
+              raise SystemExit("Embedded Steve DYNOSBIN payload is unterminated.")
+          encoded = "".join(source[start:end].split())
           embedded = base64.b64decode(encoded, validate=True)
           actor = pathlib.Path("mods/stevecraft/actors/minecraft_steve_geo.bin").read_bytes()
           if embedded != actor:
