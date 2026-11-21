@@ -307,13 +307,36 @@ local function test_hotbar_and_input()
     m.controller.buttonPressed = A_BUTTON
     build.handle_build_input(m)
     local after_first = state().block_count
+    assert(build.is_place_button_latched(), "first A press was not latched")
+
+    -- Repeat the touch press event on a later frame without releasing A.
+    gGlobalTimer = 301
+    m.controller.buttonDown = L_TRIG | A_BUTTON
     m.controller.buttonPressed = A_BUTTON
     build.handle_build_input(m)
-    assert(state().block_count == after_first, "same-frame duplicate A event created a second block")
+    assert(state().block_count == after_first,
+        "repeated A event across held frames created another block")
+    assert(build.is_place_button_latched(), "held A press unexpectedly cleared its latch")
+
+    -- A real release rearms placement. The next tap targets the same occupied cell.
+    m.controller.buttonDown = L_TRIG
+    m.controller.buttonPressed = 0
+    m.controller.buttonReleased = A_BUTTON
+    build.handle_build_input(m)
+    assert(not build.is_place_button_latched(), "A release did not rearm placement")
+
+    gGlobalTimer = 302
+    m.controller.buttonDown = L_TRIG | A_BUTTON
+    m.controller.buttonPressed = A_BUTTON
+    m.controller.buttonReleased = 0
+    build.handle_build_input(m)
+    assert(build.is_place_button_latched(), "new A press did not latch")
+    assert(state().block_count == after_first, "occupied cell spawned a second block")
     assert(sync_spawn_calls == 0, "input handler used synchronized spawning")
 
     m.controller.buttonDown = 0
     m.controller.buttonPressed = 0
+    m.controller.buttonReleased = 0
     build.render_inventory()
     assert(#hud_lines >= 2, "inventory HUD did not render")
     print("PASS: hotbar selection, layer control, consumed inputs, and HUD")
@@ -428,7 +451,9 @@ test_block_limit()
 
 local function test_first_person_camera_and_voxel_ray()
     local camera = __STEVECRAFT_TEST.camera
+    local native = __STEVECRAFT_TEST.modules.native_engine
     assert(type(camera) == "table", "camera system export missing")
+    assert(type(native) == "table", "native engine adapter export missing")
 
     local hit_x, hit_y, hit_z, previous_x, previous_y, previous_z = camera.trace_voxel_ray(
         { x = 45, y = 45, z = 45 },
@@ -468,6 +493,31 @@ local function test_first_person_camera_and_voxel_ray()
     function get_first_person_enabled()
         return gFirstPersonCamera.enabled
     end
+    function sins(angle) return math.sin(angle * math.pi / 32768) end
+    function coss(angle) return math.cos(angle * math.pi / 32768) end
+    function collision_find_surface_on_ray(sx, sy, sz, dx, dy, dz, precision)
+        return {
+            surface = { normal = { x = 0, y = 1, z = 0 } },
+            hitPos = { x = sx + dx, y = sy + dy, z = sz + dz },
+            precision = precision,
+        }
+    end
+    function collision_find_floor(x, y, z)
+        return { queried = true, x = x, y = y, z = z }
+    end
+
+    local capabilities = native.capabilities()
+    assert(capabilities.host_c_player_physics == true, "host C physics ownership was not detected")
+    assert(capabilities.first_person_camera == true, "native first-person C API was not detected")
+    assert(capabilities.native_surface_ray == true, "native surface-ray C API was not detected")
+    local floor = native.find_floor(1, 2, 3)
+    assert(floor and floor.queried and floor.y == 2, "native C floor query did not pass through")
+    local snapshot = native.read_player_physics_state({
+        action = 7, forwardVel = 12, vel = { x = 1, y = 2, z = 3 },
+        pos = { x = 4, y = 5, z = 6 }, floor = {},
+    })
+    assert(snapshot.action == 7 and snapshot.forward_speed == 12 and snapshot.velocity_y == 2,
+        "MarioState C physics snapshot was not read correctly")
 
     local enabled = camera.ensure_first_person_camera({ faceAngle = { y = 0 } })
     assert(enabled == true and gFirstPersonCamera.enabled == true, "first-person camera did not enable")
