@@ -100,6 +100,8 @@ function M.load_textures(modfs, texture_getter, uri_format)
         hotbar = "textures/gui/sprites/hud/hotbar.png",
         hotbar_selection = "textures/gui/sprites/hud/hotbar_selection.png",
         crosshair = "textures/gui/sprites/hud/crosshair.png",
+        experience_background = "textures/gui/sprites/hud/experience_bar_background.png",
+        experience_progress = "textures/gui/sprites/hud/experience_bar_progress.png",
         heart_full = "textures/gui/sprites/hud/heart/full.png",
         heart_half = "textures/gui/sprites/hud/heart/half.png",
         heart_empty = "textures/gui/sprites/hud/heart/container.png",
