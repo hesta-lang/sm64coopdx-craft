@@ -70,6 +70,50 @@ def download_client_jar(version: str, destination: Path) -> str:
     return actual
 
 
+def download_sound_definitions(version: str) -> dict[str, Any]:
+    """Download sounds.json from the official version asset index (not the client JAR)."""
+    headers = {"User-Agent": "SteveCraft-BlockMetadata-Extractor/1.0"}
+    with urllib.request.urlopen(
+        urllib.request.Request(MANIFEST_URL, headers=headers), timeout=60
+    ) as response:
+        manifest = json.load(response)
+    entry = next((item for item in manifest.get("versions", []) if item.get("id") == version), None)
+    if entry is None:
+        raise ValueError(f"Minecraft version {version!r} is not in Mojang's version manifest")
+    with urllib.request.urlopen(
+        urllib.request.Request(entry["url"], headers=headers), timeout=60
+    ) as response:
+        metadata = json.load(response)
+    asset_index_info = metadata.get("assetIndex")
+    if not isinstance(asset_index_info, dict) or not asset_index_info.get("url"):
+        raise ValueError(f"No asset index metadata was found for Minecraft {version}")
+    with urllib.request.urlopen(
+        urllib.request.Request(asset_index_info["url"], headers=headers), timeout=60
+    ) as response:
+        asset_index = json.load(response)
+
+    definitions: dict[str, Any] = {}
+    for asset_path, item in asset_index.get("objects", {}).items():
+        path = PurePosixPath(asset_path)
+        if path.name != "sounds.json" or len(path.parts) != 2:
+            continue
+        namespace = path.parts[0]
+        digest = item.get("hash") if isinstance(item, dict) else None
+        if not isinstance(digest, str) or len(digest) != 40:
+            continue
+        url = f"https://resources.download.minecraft.net/{digest[:2]}/{digest}"
+        with urllib.request.urlopen(
+            urllib.request.Request(url, headers=headers), timeout=60
+        ) as response:
+            source = read_json(response.read(), asset_path)
+        if isinstance(source, dict):
+            definitions[namespace] = source
+
+    if not definitions:
+        raise ValueError(f"No sounds.json resource was found in the {version} asset index")
+    return definitions
+
+
 def normalize_id(value: str, namespace: str = "minecraft") -> str:
     value = str(value)
     return value if ":" in value else f"{namespace}:{value}"
@@ -236,7 +280,7 @@ def summarize_recipe(recipe_id: str, source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def extract_from_jar(jar_path: Path, version: str, output_path: Path, jar_sha1: str | None = None) -> dict[str, Any]:
+def extract_from_jar(jar_path: Path, version: str, output_path: Path, jar_sha1: str | None = None, external_sound_definitions: dict[str, Any] | None = None) -> dict[str, Any]:
     with zipfile.ZipFile(jar_path) as archive:
         blockstate_index = resource_files(archive, "blockstates", "assets")
         model_index = resource_files(archive, "models", "assets")
@@ -308,6 +352,18 @@ def extract_from_jar(jar_path: Path, version: str, output_path: Path, jar_sha1: 
                         if isinstance(value, dict) and isinstance(value.get("sounds", []), list) else 0
                     })
 
+        # sounds.json is a separately downloaded launcher asset in current Java releases.
+        for namespace, source in (external_sound_definitions or {}).items():
+            if not isinstance(source, dict):
+                continue
+            for event, value in sorted(source.items()):
+                sound_events.append({
+                    "id": f"{namespace}:{event}",
+                    "sound_count": len(value.get("sounds", []))
+                    if isinstance(value, dict) and isinstance(value.get("sounds", []), list) else 0
+                })
+        sound_events = list({entry["id"]: entry for entry in sound_events}.values())
+
     result = {
         "format_version": FORMAT_VERSION,
         "minecraft_version": version,
@@ -351,7 +407,8 @@ def main() -> int:
             downloaded_sha1 = download_client_jar(args.version, jar)
         if not jar.is_file():
             raise FileNotFoundError(f"Client JAR not found: {jar}")
-        result = extract_from_jar(jar, args.version, args.output, downloaded_sha1)
+        sound_definitions = download_sound_definitions(args.version)
+        result = extract_from_jar(jar, args.version, args.output, downloaded_sha1, sound_definitions)
         coverage = result["coverage"]
         print(
             f"Indexed {coverage['blockstate_resource_count']} blockstates, "
