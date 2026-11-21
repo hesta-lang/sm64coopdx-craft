@@ -149,6 +149,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.8.2"
+          # This job invokes the pinned Gradle CLI directly; an unrelated legacy
+          # wrapper under platform/ is not used by this isolated Fabric project.
+          validate-wrappers: false
 
       - name: Compile Fabric runtime probe
         working-directory: tools/minecraft_java_runtime_probe
