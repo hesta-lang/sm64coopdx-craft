@@ -31,7 +31,6 @@ print("PASS: native Mario footstep suppression and per-block Minecraft step mate
 -- Validate ModAudio resource loading itself, including the retry path used
 -- when the embedded ModFS files become available after the first hook call.
 MOD_FS_URI_FORMAT = "modfs:/%s/%s"
-MOD_AUDIO_CHANNEL_SFX = 3
 gGlobalTimer = 1
 function mod_fs_get() return { modPath = "SteveCraft" } end
 local fail_one_sample_once = true
@@ -73,12 +72,13 @@ assert(pending_dirt_sample ~= nil and pending_dirt_sample.loaded == false,
 pending_dirt_sample.loaded = true
 gGlobalTimer = 241
 assert(Sounds.load() == true, "ModAudio did not detect a previously pending sample becoming ready")
-assert(stone_sample.channel == MOD_AUDIO_CHANNEL_SFX,
-    "Minecraft footstep sample was not assigned to the SFX channel")
-assert(stone_sample.baseVolume == 1.0, "Minecraft footstep base volume was not initialized")
+assert(stone_sample.channel == nil,
+    "ModAudio sample must not receive the stream-only volume channel property")
+assert(stone_sample.baseVolume == nil,
+    "sample playback volume should be passed to audio_sample_play instead of mutating stream volume")
 assert(Sounds.play_footstep("stone", { x = 1, y = 2, z = 3 }) == true,
     "audio_sample_play void return was incorrectly treated as failure")
 assert(#played_samples == 1, "stone footstep did not queue exactly one sample")
 assert(played_samples[1].sample == stone_sample, "wrong sample was played for stone")
 assert(played_samples[1].volume >= 0.9, "Minecraft footstep output volume remains too low")
-print("PASS: ModAudio SFX loading, retry, and audible footstep playback")
+print("PASS: ModAudio sample loading/retry and direct SFX playback without stream-only properties")
