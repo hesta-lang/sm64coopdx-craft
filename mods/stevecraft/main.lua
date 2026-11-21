@@ -3,7 +3,7 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.5-alpha"
+local STEVECRAFT_VERSION = "0.4.6-alpha"
 
 -- Resolve modules relative to this mod instead of depending on the host's
 -- current working directory or a globally configured Lua package.path.
@@ -432,6 +432,19 @@ local function save_world_grid()
     return save_ok
 end
 
+local function clear_all_world_grids()
+    -- Construction is session/scene-local: never restore blocks from an old
+    -- level, area, warp, or save session.
+    local all = safe_storage_load_all()
+    for key in pairs(all) do
+        if type(key) == "string" and key:sub(1, 9) == "sc_world_" then
+            safe_storage_remove(key)
+        end
+    end
+    sWorldBlocks = {}
+    sWorldBlockCount = 0
+end
+
 local function deactivate_world_objects()
     for _, cell in pairs(sWorldBlocks) do
         local object = cell.object
@@ -440,6 +453,7 @@ local function deactivate_world_objects()
         end
     end
     Blocks.clear_spawned()
+    clear_all_world_grids()
 end
 
 local function load_world_grid(world_prefix)
@@ -485,6 +499,9 @@ local function ensure_world_loaded()
 
     if sCurrentWorldKey ~= nil then
         deactivate_world_objects()
+    else
+        -- A fresh load also starts with an empty construction world.
+        clear_all_world_grids()
     end
     sCurrentWorldKey = world_key
     sCurrentWorldPrefix = world_prefix
@@ -687,15 +704,11 @@ local function consume_build_controls(m)
     local down = controller.buttonDown or 0
     local pressed = controller.buttonPressed or 0
     local released = controller.buttonReleased or 0
-    if (released & A_BUTTON) ~= 0 or ((down & A_BUTTON) == 0 and (pressed & A_BUTTON) == 0) then
+    local place_button = type(X_BUTTON) == "number" and X_BUTTON or 0
+
+    if place_button ~= 0 and ((released & place_button) ~= 0
+        or ((down & place_button) == 0 and (pressed & place_button) == 0)) then
         sPlaceButtonLatched = false
-    end
-    if (down & L_TRIG) == 0 then
-        sPlaceButtonLatched = false
-        sMiningCellKey = nil
-        sMiningFrames = 0
-        sMiningRequiredFrames = 0
-        return
     end
 
     local consumed = 0
@@ -716,9 +729,8 @@ local function consume_build_controls(m)
         consumed = consumed | D_JPAD
     end
 
-    if (pressed & A_BUTTON) ~= 0 then
-        -- Some touch/controller paths can repeat buttonPressed across frames
-        -- while the same press is still held. Accept only its first edge.
+    -- X places a block directly; L is no longer required.
+    if place_button ~= 0 and (pressed & place_button) ~= 0 then
         if not sPlaceButtonLatched then
             sPlaceButtonLatched = true
             local frame = tonumber(gGlobalTimer) or -1
@@ -735,12 +747,11 @@ local function consume_build_controls(m)
                 end
             end
         end
-        consumed = consumed | A_BUTTON
+        consumed = consumed | place_button
     end
 
-    -- Hold L+B on a voxel to mine it. Mining time is scaled by the block's
-    -- Java hardness; this is a bare-hand prototype, not the Java tool system.
-    if (down & B_BUTTON) ~= 0 then
+    -- Mining remains L+B. Releasing L cancels the mining operation.
+    if (down & L_TRIG) ~= 0 and (down & B_BUTTON) ~= 0 then
         update_block_mining(m)
         consumed = consumed | B_BUTTON
     else
@@ -882,6 +893,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         remove_grid_block = remove_grid_block,
         get_build_system_state = get_build_system_state,
         get_world_context = get_world_context,
+        clear_all_world_grids = clear_all_world_grids,
         get_behavior_init = function() return sGridBehaviorInit end,
         get_behavior_loop = function() return sGridBehaviorLoop end,
         get_behavior_id = function() return sGridBlockBehaviorId end,
@@ -897,9 +909,10 @@ VoxelRenderer.configure(Assets.get_block_textures())
 VoxelRenderer.install_hooks()
 Sounds.load()
 
--- Replace only Mario's native footstep sounds; all other C audio is untouched.
+-- SteveCraft replaces Mario's action sounds and voice with its own movement
+-- audio. Ambient, object, menu, and environmental sound banks remain enabled.
 if type(HOOK_ON_PLAY_SOUND) == "number" then
-    hook_event(HOOK_ON_PLAY_SOUND, Sounds.filter_mario_footstep)
+    hook_event(HOOK_ON_PLAY_SOUND, Sounds.filter_mario_sounds)
 end
 
 -- Native Mario movement is retained. The per-area grid creates real surface objects.
@@ -907,5 +920,8 @@ hook_event(HOOK_MARIO_UPDATE, apply_steve_to_mario)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, consume_build_controls)
 hook_event(HOOK_ON_HUD_RENDER, render_build_inventory)
 hook_event(HOOK_ON_WARP, on_warp)
+if type(HOOK_ON_LEVEL_INIT) == "number" then
+    hook_event(HOOK_ON_LEVEL_INIT, on_warp)
+end
 
 print("[SteveCraft] Standalone mod loaded (" .. STEVECRAFT_VERSION .. ").")
