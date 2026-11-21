@@ -203,10 +203,10 @@ local function load_steve_model()
         return nil
     end
 
-    -- Resolve the actor by its ModFS filepath, not the generic internal name
-    -- "mario_geo". This prevents the lookup from accidentally resolving the
-    -- built-in Mario layout when the custom actor file has not been registered.
-    local lookup_name = STEVE_GEO_NAME
+    -- Prefer a ModFS URI when the actor is available there. Some older
+    -- standalone packages register the actor by its internal GeoLayout symbol,
+    -- so retain that official DynOS lookup as a fallback.
+    local candidates = {}
     if type(mod_fs_get) == "function" and type(MOD_FS_URI_FORMAT) == "string" then
         local mod_fs = nil
         local fs_ok, fs_result = pcall(mod_fs_get)
@@ -216,24 +216,32 @@ local function load_steve_model()
             if create_ok then mod_fs = create_result end
         end
         if mod_fs ~= nil and type(mod_fs.modPath) == "string" then
-            lookup_name = string.format(MOD_FS_URI_FORMAT, mod_fs.modPath, STEVE_GEO_FILE)
+            candidates[#candidates + 1] = string.format(MOD_FS_URI_FORMAT, mod_fs.modPath, STEVE_GEO_FILE)
+        end
+    end
+    candidates[#candidates + 1] = STEVE_GEO_NAME
+
+    local modelId = E_MODEL_ERROR_MODEL
+    local used_name = nil
+    for _, lookup_name in ipairs(candidates) do
+        local ok, result = pcall(smlua_model_util_get_id, lookup_name)
+        if ok and type(result) == "number" and result ~= E_MODEL_ERROR_MODEL then
+            modelId = result
+            used_name = lookup_name
+            break
+        elseif not ok then
+            print("[SteveCraft] WARNING: actor lookup failed for " .. lookup_name .. ": " .. tostring(result))
         end
     end
 
-    local ok, modelId = pcall(smlua_model_util_get_id, lookup_name)
-    if not ok then
-        print("[SteveCraft] ERROR: GeoLayout lookup raised an error: " .. tostring(modelId))
-        return nil
-    end
-
-    if type(modelId) ~= "number" or modelId == E_MODEL_ERROR_MODEL then
-        print('[SteveCraft] ERROR: DynOS could not resolve Steve actor "' .. lookup_name .. '".')
-        print("[SteveCraft] Verify that actors/minecraft_steve_geo.bin is present in the installed mod.")
+    if modelId == E_MODEL_ERROR_MODEL then
+        print("[SteveCraft] ERROR: DynOS could not resolve Steve's GeoLayout.")
+        print("[SteveCraft] Check that actors/minecraft_steve_geo.bin is included and registered by the mod.")
         return nil
     end
 
     sModelId = modelId
-    print("[SteveCraft] Steve actor URI resolved to extended model id=" .. tostring(modelId))
+    print("[SteveCraft] Steve actor lookup succeeded (" .. tostring(used_name) .. "), extended model id=" .. tostring(modelId))
     return sModelId
 end
 
