@@ -1,43 +1,118 @@
-# SteveCraft 0.2.4-alpha — articulated proxy with math-generated animations
+# SteveCraft 0.3.0-alpha — Steve proxy, block grid, and inventory prototype
 
-SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
-standalone mod ZIP and does not modify or repackage the Android APK.
+SteveCraft is an independent Lua mod for SM64CoopDX. It is packaged as a
+standalone mod ZIP; it does not alter or repackage the Android APK.
 
-## Current implementation
+## Player and model
 
-- Preserves the original DynOS actor at `actors/minecraft_steve_geo.bin`; it is not modified or regenerated.
-- Resolves the internal GeoLayout symbol `mario_geo` through `smlua_model_util_get_id()`.
-- Assigns the resulting extended-model ID to the existing local player's `m.marioObj` with `obj_set_model_extended()`.
-- Reads the model ID back with `obj_get_model_id_extended()` to verify the assignment.
-- Keeps Mario's native movement, gravity, collision, camera, and multiplayer proxy behavior unchanged.
-- Observes `idle`, `move`, `jump`, `fall`, and `swim` states.
-- Generates 24-frame idle and walking animations in Lua using sinusoidal functions, registers them through `smlua_anim_util_register_animation()`, and applies them to the same `marioObj`.
-- Uses all 20 `GEO_ANIMATED_PART` channels in the existing GeoLayout; no second actor is spawned.
+- Keeps Mario as the single engine/physics proxy through the existing
+  m.marioObj; it does not spawn a second player actor.
+- Preserves the original DynOS actor at
+  mods/stevecraft/actors/minecraft_steve_geo.bin. The file is not regenerated.
+- Resolves the internal GeoLayout symbol mario_geo through
+  smlua_model_util_get_id() and assigns it using obj_set_model_extended().
+- Retains native SM64CoopDX gravity, movement, camera, and player collision.
+  Full Minecraft Java player physics is not implemented yet.
+- Generates 24-frame idle and walking animation loops using Lua trigonometric
+  functions and the model's 20 audited animated-part channels.
 
-## Verified rig layout
+Original actor SHA-256:
 
-The original binary SHA-256 is:
+773446e965b4123f032faf1948528a5b1541d4ca7b3fae9fe8220ce0769fcad1
 
-`773446e965b4123f032faf1948528a5b1541d4ca7b3fae9fe8220ce0769fcad1`
+## Invisible per-map construction grid
 
-The read-only audit found a balanced `mario_geo` layout with 361 words, 215 commands, 20 animated parts, and zero custom DynOS `GEO_BONE` nodes. Its part traversal matches the 20 `MarioAnimPart` entries in SM64CoopDX: root, butt, torso, head, upper/forearm/hand groups for both arms, and upper/lower groups for both legs.
+Each save slot, level, and area gets its own grid, anchored to world origin.
+The grid itself is invisible; a placed block occupies one integer cell. Grid
+coordinates are converted into SM64 world coordinates using 90 game units per
+cell.
 
-The animation format reserves three root-translation channels (six index entries) when `ANIM_FLAG_6` is used. The 20 animated parts then consume three rotation channels each. The generator therefore creates 63 channel index pairs and 1,440 sampled values per animation (24 frames × 20 parts × 3 axes).
+- Maximum 128 placed blocks per area in this prototype.
+- Occupied cells cannot be overwritten.
+- Each placed block is spawned as an SM64CoopDX surface object.
+- The object loads its collision every update using
+  load_object_collision_model(). Removing a block deactivates that object,
+  which removes its dynamic collision.
+- Grid records are persisted with the mod's own storage, split into chunks
+  shorter than its per-key value limit.
+- Returning to the same save slot/level/area reconstructs the saved blocks.
+  Switching areas deactivates the old area's block objects.
 
-## Animation behavior
+### Current controls
 
-- **Idle:** subtle torso breathing and counter-motion in the head.
-- **Walking:** opposing left/right arm and thigh swings, with small elbow bends.
-- **Other states:** currently use the idle pose. Dedicated jump, fall, and swim animations are not yet implemented.
+Hold **L** to enter build controls:
 
-The current walk amplitude is approximately 30 degrees. The angle values use SM64's signed 16-bit full-turn representation.
+| Input | Action |
+|---|---|
+| L + D-pad Left / Right | Select hotbar slot |
+| L + D-pad Up / Down | Raise / lower construction layer |
+| L + A | Place the selected block in the cell in front of Steve |
+| L + B | Remove the block in the target cell |
 
-## Minecraft Java research pipeline
+Placement currently uses Steve's facing direction and a fixed forward distance,
+not a camera raycast. Vertical placement uses the selected layer offset.
 
-The research workflow targets Minecraft Java 26.3 and exports block resource metadata plus live registry values from a temporary Fabric dedicated server. It records block IDs, states, blockstate model references, model cuboids, tags, recipes, sounds, destroy speed, blast resistance, friction, collision shapes, and related fields.
+## Inventory and starter blocks
 
-World-dependent collision and redstone values are explicitly marked as contextual samples rather than universal properties. The temporary research artifacts are separate from the standalone player mod ZIP.
+The HUD shows a 9-slot hotbar. Each slot starts with 64 units, creating a
+creative-mode-style starter inventory. The selected slot and stack counts are
+saved per mod save slot. Breaking a block returns one item to its matching
+stack or an empty slot. A block is not removed when the inventory has no room
+for the returned item.
 
-## Validation limits
+The initial catalogue contains nine Minecraft Java 26.3 block IDs:
 
-GitHub Actions validates the extractor, Java runtime registry, original binary checksum and GeoLayout, animation formulas, channel offsets, integer ranges, and Lua syntax. CI does not render the animation on an Android device. The visual result and joint directions still require an in-game test; do not treat a successful workflow as proof of correct on-device appearance.
+- Stone
+- Dirt
+- Grass block
+- Oak planks
+- Cobblestone
+- Glass
+- Bricks
+- Sand
+- Bedrock
+
+Destroy speed, explosion resistance, friction, and sound-event IDs for this
+starter catalogue were transcribed from the validated Java 26.3 runtime-registry
+artifact. Bedrock has destroy speed -1 and cannot be removed through this
+prototype.
+
+## Collision and rendering limits
+
+The current visual and collision prototype uses SM64CoopDX's vanilla breakable
+box model and collision mesh, scaled to the grid cell. This proves the object
+spawn, persistence, and dynamic surface-collision path, but it does **not**
+render the actual Minecraft block textures or per-block model geometry yet.
+At this stage the nine starter blocks all use a full-cube collision and the
+same placeholder appearance. Their Java-specific friction and sound IDs are
+catalogue data only; different movement friction and Minecraft audio playback
+have not been wired in.
+
+The current build is also not yet a complete Minecraft world simulator:
+there is no crafting system, mining progress, block-state variants, fluids,
+redstone simulation, camera-ray block selection, or Java-equivalent player
+physics. These must be built and validated in later stages.
+
+## Multiplayer and persistence boundary
+
+The mod attempts to spawn blocks with spawn_sync_object() so the objects can
+participate in the current SM64CoopDX multiplayer session. If synchronized
+spawning is unavailable, it falls back to a local object. Mod storage is local
+to this mod installation/save slot; it is not a server-authoritative shared
+world database. Persistent construction across different players or devices
+is not claimed by this version.
+
+## Validation
+
+GitHub Actions checks:
+- Minecraft Java 26.3 resource extraction and live block registry inspection.
+- Original actor checksum, DynOS GeoLayout hierarchy, and its 20 animation channels.
+- Idle/walk animation formulas and index/value bounds.
+- Grid coordinates, inventory accounting, placement/removal, object collision
+  setup, storage chunk lengths, per-area reload, input consumption, and block
+  capacity using mocked SM64CoopDX APIs.
+
+CI does not render the placeholder blocks or verify collision dimensions on an
+Android device. The 90-unit cell size and 0.45 model scale are the initial
+prototype mapping and require an in-game Android check before being treated as
+final Minecraft-sized geometry.
