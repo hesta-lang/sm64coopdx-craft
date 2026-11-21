@@ -48,7 +48,7 @@ jobs:
       - name: Install Lua and ZIP tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y lua5.4 zip
+          sudo apt-get install -y lua5.3 zip
 
       - name: Validate precompiled DynOS actor
         run: |
@@ -68,7 +68,7 @@ jobs:
       - name: Validate Lua syntax
         run: |
           for file in mods/stevecraft/*.lua mods/stevecraft/systems/*.lua; do
-            luac5.4 -p "$file"
+            luac5.3 -p "$file"
           done
 
       - name: Validate Steve model payload and construction runtime
@@ -102,7 +102,7 @@ jobs:
 
           main = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
           required = (
-              'local STEVECRAFT_VERSION = "0.4.2-alpha"',
+              'local STEVECRAFT_VERSION = "0.4.3-alpha"',
               'stevecraft_load_module("model", "model")',
               "Blocks.spawn_once(",
               "GRID_MAX_BLOCKS_PER_AREA = 128",
@@ -125,30 +125,37 @@ jobs:
             exit 1
           fi
 
+      - name: Validate native engine bridge and placement input
+        run: |
+          grep -q "function Native.read_player_physics_state" mods/stevecraft/systems/native_engine.lua
+          grep -q "function Native.find_surface_on_ray" mods/stevecraft/systems/native_engine.lua
+          grep -q "sPlaceButtonLatched" mods/stevecraft/main.lua
+          grep -q "native_engine = Native" mods/stevecraft/main.lua
+
       - name: Validate generated animation data
-        run: lua5.4 tests/stevecraft_animation/test_animation.lua
+        run: lua5.3 tests/stevecraft_animation/test_animation.lua
 
       - name: Validate grid, inventory, and dynamic collision system
-        run: lua5.4 tests/stevecraft_build_system/test_build_system.lua
+        run: lua5.3 tests/stevecraft_build_system/test_build_system.lua
 
       - name: Package standalone mod and engineering notes
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.2-alpha.zip" main.lua assets.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.3-alpha.zip" main.lua assets.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
 
       - name: Verify package contents
         run: |
-          unzip -t SteveCraft-0.4.2-alpha.zip
-          unzip -l SteveCraft-0.4.2-alpha.zip | grep -q " assets.lua"
-          unzip -l SteveCraft-0.4.2-alpha.zip | grep -q " systems/assets.lua"
-          unzip -l SteveCraft-0.4.2-alpha.zip
-          unzip -p SteveCraft-0.4.2-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
-          unzip -p SteveCraft-0.4.2-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
+          unzip -t SteveCraft-0.4.3-alpha.zip
+          unzip -l SteveCraft-0.4.3-alpha.zip | grep -q " assets.lua"
+          unzip -l SteveCraft-0.4.3-alpha.zip | grep -q " systems/assets.lua"
+          unzip -l SteveCraft-0.4.3-alpha.zip
+          unzip -p SteveCraft-0.4.3-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
+          unzip -p SteveCraft-0.4.3-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.4.2-alpha
-          path: SteveCraft-0.4.2-alpha.zip
+          name: SteveCraft-0.4.3-alpha
+          path: SteveCraft-0.4.3-alpha.zip
           if-no-files-found: error
           retention-days: 14
