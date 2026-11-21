@@ -5,6 +5,8 @@ local Physics = {}
 local Native = require("systems/native_engine")
 local last_state = nil
 local last_step_frame = -100000
+local last_position = nil
+local last_position_frame = -1
 
 local function state_from_mario(mario)
     local native_state = Native.read_player_physics_state(mario)
@@ -45,22 +47,44 @@ end
 
 function Physics.update(mario, sounds, get_footstep_material)
     local state, native_state = state_from_mario(mario)
+    local frame = tonumber(gGlobalTimer) or 0
+    local moved_distance = 0
+    local position = native_state and native_state.position or (mario and mario.pos) or nil
+    if position ~= nil and frame ~= last_position_frame then
+        if last_position ~= nil then
+            local dx = (position.x or 0) - (last_position.x or 0)
+            local dz = (position.z or 0) - (last_position.z or 0)
+            moved_distance = math.sqrt(dx * dx + dz * dz)
+        end
+        last_position = { x = position.x or 0, y = position.y or 0, z = position.z or 0 }
+        last_position_frame = frame
+    end
+
+    -- Final fallback for Android builds whose MarioState floor pointer and
+    -- ACT_FLAG_MOVING are not populated consistently: detect real horizontal
+    -- player displacement while not in an airborne or swimming action.
+    local action = native_state and native_state.action or 0
+    local airborne = type(ACT_FLAG_AIR) == "number" and (action & ACT_FLAG_AIR) ~= 0
+    local swimming = type(ACT_FLAG_SWIMMING) == "number" and (action & ACT_FLAG_SWIMMING) ~= 0
+    if state == "idle" and not airborne and not swimming and moved_distance >= 0.35 then
+        state = "move"
+    end
+
     if state ~= last_state then
         last_state = state
         print("[SteveCraft] Movement state: " .. state)
     end
 
-    if state ~= "move" or native_state == nil or native_state.floor == nil then
+    if state ~= "move" or native_state == nil then
         return state
     end
 
     local vx = native_state.velocity_x or 0
     local vz = native_state.velocity_z or 0
     local planar_speed = math.sqrt(vx * vx + vz * vz)
-    local speed = math.max(math.abs(native_state.forward_speed or 0), planar_speed)
+    local displacement_speed = moved_distance * 30
+    local speed = math.max(math.abs(native_state.forward_speed or 0), planar_speed, displacement_speed)
     if speed < 1.5 then return state end
-
-    local frame = tonumber(gGlobalTimer) or 0
     local interval = math.max(8, math.min(16, math.floor(17 - speed * 0.4)))
     if frame - last_step_frame >= interval then
         last_step_frame = frame
@@ -78,6 +102,8 @@ end
 function Physics.reset()
     last_state = nil
     last_step_frame = -100000
+    last_position = nil
+    last_position_frame = -1
 end
 
 function Physics.native_capabilities()
