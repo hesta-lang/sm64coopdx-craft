@@ -201,6 +201,52 @@ hooks[HOOK_BEFORE_GEO_PROCESS](node, 0)
 assert(node.displayList == original, "vanilla display list was not restored for an unmanaged object")
 assert(node.flags == LAYER_OPAQUE * 256 + 3, "original display-list flags were not restored")
 
+-- A mined terrain collision triangle receives a separate, non-colliding
+-- dark prism mask. The original level GeoLayout is not modified by this mod.
+local mask_original = { name = "vanilla_mask_carrier" }
+local mask_node = {
+    _pointer = 503,
+    type = GRAPH_NODE_TYPE_DISPLAY_LIST,
+    hookProcess = 0,
+    flags = LAYER_OPAQUE * 256 + 3,
+    displayList = mask_original,
+}
+mask_node.next = mask_node
+local mask_object = {
+    _pointer = 1003,
+    oPosX = 100, oPosY = 100, oPosZ = 100,
+    header = { gfx = { sharedChild = mask_node } },
+}
+local terrain_snapshot = {
+    signature = "0:0:0,100,0|100,100,0|0,100,100",
+    vertices = {
+        { x = 0, y = 100, z = 0 },
+        { x = 100, y = 100, z = 0 },
+        { x = 0, y = 100, z = 100 },
+    },
+    normal = { x = 0, y = 1, z = 0 },
+}
+assert(Renderer.attach_surface_mask(mask_object, terrain_snapshot),
+    "terrain hole mask failed to attach")
+assert(Renderer.is_ready(mask_object) and Renderer.is_surface_mask(mask_object),
+    "terrain hole mask was not marked ready")
+assert(Renderer.get_attached_block(mask_object) == "stevecraft:terrain_hole",
+    "terrain hole mask did not receive its special renderer id")
+local mask_mesh = gfx_buffers["stevecraft_terrain_hole_"
+    .. terrain_snapshot.signature:gsub("[^%w_]", "_") .. "_dl"]
+assert(mask_mesh ~= nil and mask_mesh.commands[1] ~= nil,
+    "terrain mask did not create its dark-prism display list")
+assert(Renderer.attach_surface_mask(mask_object, terrain_snapshot),
+    "repeated terrain-mask attachment should be idempotent")
+current_object = mask_object
+hooks[HOOK_BEFORE_GEO_PROCESS](mask_node, 0)
+assert(mask_node.displayList ~= mask_original,
+    "terrain mask display list was not substituted into the object GeoLayout")
+current_object = nil
+hooks[HOOK_BEFORE_GEO_PROCESS](mask_node, 0)
+assert(mask_node.displayList == mask_original,
+    "terrain mask did not restore the original carrier display list")
+
 local counts = Renderer.debug_counts()
 assert(counts.meshes == 2 and counts.display_nodes == 1 and counts.objects == 2,
     "renderer resource registry counts are inconsistent")
