@@ -185,3 +185,59 @@ the final Android rendering. The first device test must check limb direction,
 pose scale, camera framing and whether the animation changes from idle to walk
 without affecting Mario's collision or position. Jump, fall and swim animations
 remain a subsequent stage and currently resolve to the idle pose.
+
+## 8. Invisible block grid, inventory, and dynamic collision prototype
+
+The first construction implementation uses SM64CoopDX's supported Lua surface
+object path rather than attempting to alter the map's static collision blob.
+The block behavior is registered with `hook_behavior(..., OBJ_LIST_SURFACE,
+true, init, loop)`. Its initializer assigns the existing breakable-box
+collision resource and sets object drawing/collision range. The behavior loop
+calls `load_object_collision_model()` every update, as required by the engine
+API for object collision. The engine transforms the collision vertices with
+the object's position, orientation, and scale before inserting dynamic
+surfaces into its spatial partition.
+
+The current grid:
+- Uses integer XYZ cell coordinates with a 90-SM64-unit cell width and is
+  anchored at world origin.
+- Is scoped by current save slot, level number, and area index.
+- Is intentionally invisible; the grid is data, not a rendered floor or wireframe.
+- Enforces one block per cell and a prototype limit of 128 blocks per area.
+- Saves compact cell records through mod_storage in chunks no longer than 800
+  characters, below SM64CoopDX mod-storage's per-value limit.
+- Reconstructs block objects when the user returns to that save/level/area.
+- Deactivates the old area's block objects on area changes and warps.
+
+The hotbar is nine slots with 64 items preloaded per slot, which is a
+creative-mode test inventory rather than a survival progression system. It
+persists the selected slot and stack counts per save slot. When the player
+breaks a block, it is only removed if the matching stack or an empty slot can
+accept the returned item. Bedrock has destroy speed -1 and is rejected by the
+removal path.
+
+Controls while holding L:
+- D-pad Left/Right changes the selected slot.
+- D-pad Up/Down changes the build layer.
+- A places the selected block in the grid cell in front of Steve.
+- B removes the block in that target cell.
+
+This first version intentionally does not yet perform a camera raycast; the
+target is calculated from Mario's facing yaw and a fixed forward distance.
+The native block object uses the vanilla breakable-box display model and
+collision mesh scaled to the cell. That means collision is engine-backed and
+real, but the visual is still a placeholder rather than the correct Minecraft
+block model/texture. All nine starter blocks currently use the same full-cube
+collision mesh. The Java registry's friction and sound IDs are retained in the
+catalogue, but do not yet alter SM64 movement or trigger Minecraft sounds.
+
+Multiplayer boundary: the mod attempts `spawn_sync_object()`, so block
+objects can synchronize during a live session. The mod's storage file is local
+to the installation/save slot and is not a server-authoritative persistent
+shared world. Cross-device world persistence has not been implemented.
+
+CI tests use mocked object, behavior, storage, and HUD APIs to check the
+grid/inventory logic. A successful test cannot substitute for Android
+verification of model scale, collision volume, block placement reach, and
+multiplayer behavior. This is the first dynamic-block prototype, not the final
+Minecraft voxel renderer or Java player-physics port.
