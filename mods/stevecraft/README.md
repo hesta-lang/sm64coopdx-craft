@@ -81,14 +81,20 @@ dynamic surface objects that load collision through
 - Block-state variants, slabs, stairs, fluids, redstone, crafting and mining
   drops are not implemented.
 
-## Hand model and custom skins
+## First-person hand and custom skins
 
-The separate first-person hand/forearm renderer and runtime skin replacement
-are **not included in 0.4.1-alpha**. The original actor's sub-layouts must be
-audited and bound to a visible camera-relative object before that can be
-claimed. Skin selection also requires a verified texture binding path; a PNG
-file alone cannot replace textures already referenced by a compiled display
-list.
+- A local camera-relative hand object is now created while first person is
+  active. It reuses the `mario_geo_right_hand` sub-GeoLayout from the same
+  imported Steve DYNOSBIN; no replacement hand mesh is generated.
+- The renderer resolves that layout only after the Steve actor has registered.
+  If DynOS cannot resolve it, the hand is left hidden rather than silently
+  displaying Mario's built-in hand.
+- The object's camera-relative position/orientation and visual scale still
+  need validation in the Android game. CI can validate the source path and
+  read-only existence of the layout, not the final on-screen composition.
+- Runtime skin replacement is not implemented yet. A PNG alone cannot replace
+  textures already referenced by a compiled display list; the actor needs an
+  explicit dynamic texture-binding path before custom skins can work.
 
 ## Multiplayer and persistence boundary
 
