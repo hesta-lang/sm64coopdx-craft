@@ -129,7 +129,7 @@ jobs:
               "GRID_MAX_BLOCKS_PER_AREA = 128",
               "HOOK_MARIO_UPDATE",
               "HOOK_ON_HUD_RENDER",
-              "HUD.render(",
+              "pcall(HUD.render,",
           )
           missing = [marker for marker in required if marker not in main]
           if missing:
