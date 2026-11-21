@@ -3,7 +3,7 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.7-alpha"
+local STEVECRAFT_VERSION = "0.4.8-alpha"
 
 -- Resolve modules relative to this mod instead of depending on the host's
 -- current working directory or a globally configured Lua package.path.
@@ -44,6 +44,7 @@ end
 local Assets = stevecraft_load_module("systems/assets", "systems/assets")
 local VoxelRenderer = stevecraft_load_module("systems/voxel_renderer", "systems/voxel_renderer")
 local GridTransform = stevecraft_load_module("systems/grid_transform", "systems/grid_transform")
+local SectionUpdates = stevecraft_load_module("systems/section_updates", "systems/section_updates")
 local Native = stevecraft_load_module("systems/native_engine", "systems/native_engine")
 local Blocks = stevecraft_load_module("blocks", "blocks")
 local Sounds = stevecraft_load_module("sounds", "sounds")
@@ -56,6 +57,7 @@ local BLOCK_CATALOG = Blocks.catalog
 local DEFAULT_HOTBAR = Blocks.default_hotbar
 
 local GRID_CELL_SIZE = 90
+local GRID_SECTION_SIZE = SectionUpdates.SECTION_SIZE or 16
 local GRID_OBJECT_SCALE = 0.45
 local GRID_MAX_BLOCKS_PER_AREA = 128
 local GRID_STORAGE_CHUNK_SIZE = 800
@@ -85,6 +87,7 @@ local sWorldBlockCount = 0
 local sMiningCellKey = nil
 local sMiningFrames = 0
 local sMiningRequiredFrames = 0
+local sHudWarningShown = false
 
 local function copy_table(source)
     local result = {}
@@ -319,9 +322,8 @@ local function grid_block_loop(obj)
     -- Keep every placed block snapped to the exact same grid and zero all
     -- Euler angles/angular velocity before collision and GeoLayout processing.
     GridTransform.apply(obj, GRID_CELL_SIZE)
-    local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
-    if block_id then VoxelRenderer.attach(obj, block_id, sWorldBlocks) end
-
+    -- The display list is generated once on spawn and only rebuilt by the
+    -- local dirty-region updater after a block edit, not every frame.
     if obj.collisionData ~= nil and type(load_object_collision_model) == "function" then
         load_object_collision_model()
     end
@@ -378,8 +380,34 @@ local function spawn_grid_block(block_id, x, y, z)
     if object == nil and not sWarnedGridSpawn then
         print("[SteveCraft] ERROR: local grid block spawn failed: " .. tostring(reason))
         sWarnedGridSpawn = true
+    elseif object ~= nil then
+        -- Attach again after spawn_non_sync_object returns so the render hook
+        -- always has a live object and a complete GeoLayout to work with.
+        VoxelRenderer.attach(object, block_id, sWorldBlocks)
     end
     return object
+end
+
+local function refresh_voxel_region(x, y, z)
+    local affected, dirty_sections = SectionUpdates.affected_cells(sWorldBlocks, x, y, z)
+    local rebuilt = 0
+    for _, entry in ipairs(affected) do
+        local cell = entry.cell
+        if cell and cell.object and VoxelRenderer.attach(cell.object, cell.id, sWorldBlocks) then
+            rebuilt = rebuilt + 1
+        end
+    end
+    return rebuilt, #dirty_sections
+end
+
+local function refresh_all_voxel_blocks()
+    local rebuilt = 0
+    for _, cell in pairs(sWorldBlocks) do
+        if cell.object and VoxelRenderer.attach(cell.object, cell.id, sWorldBlocks) then
+            rebuilt = rebuilt + 1
+        end
+    end
+    return rebuilt
 end
 
 local function world_chunk_prefix(world_prefix)
@@ -489,6 +517,9 @@ local function load_world_grid(world_prefix)
             end
         end
     end
+    -- Rebuild each loaded voxel against the completed world snapshot so
+    -- adjacent faces/AO are correct immediately after scene restoration.
+    refresh_all_voxel_blocks()
 end
 
 local function ensure_world_loaded()
@@ -529,6 +560,12 @@ local function place_grid_block(x, y, z)
     sWorldBlocks[key] = { id = block_id, x = x, y = y, z = z, object = object }
     sWorldBlockCount = sWorldBlockCount + 1
     selected.count = selected.count - 1
+    -- Immediate local prediction: refresh this block and only its 26-cell
+    -- AO/face-culling neighbourhood, including section-border neighbours.
+    local rebuilt, dirty_sections = refresh_voxel_region(x, y, z)
+    if rebuilt == 0 then
+        print("[SteveCraft] WARNING: placed block has no refreshed voxel display list.")
+    end
     local wx, wy, wz = cell_center(x, y, z)
     Sounds.play_place(block_id, { x = wx, y = wy, z = wz })
     save_inventory()
@@ -561,9 +598,11 @@ local function remove_grid_block(x, y, z)
     if cell.object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
         pcall(function() cell.object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
     end
+    if cell.object then VoxelRenderer.detach(cell.object) end
     Blocks.forget(grid_object_registry_key(x, y, z), cell.object)
     sWorldBlocks[key] = nil
     sWorldBlockCount = math.max(0, sWorldBlockCount - 1)
+    refresh_voxel_region(x, y, z)
     inventory_add_block(cell.id, 1)
     local wx, wy, wz = cell_center(x, y, z)
     Sounds.play_break(cell.id, { x = wx, y = wy, z = wz })
@@ -768,10 +807,11 @@ local function consume_build_controls(m)
 end
 
 local function render_build_inventory()
+    ensure_inventory_loaded()
     local mario = gMarioStates and gMarioStates[0] or nil
     local health = mario and mario.health or 0x0880
-    HUD.render({
-        inventory_loaded = sInventoryLoaded,
+    local ok, err = pcall(HUD.render, {
+        inventory_loaded = true,
         inventory = sInventory,
         selected_slot = sSelectedSlot,
         catalog = BLOCK_CATALOG,
@@ -783,6 +823,10 @@ local function render_build_inventory()
         mining_frames = sMiningFrames,
         mining_required = sMiningRequiredFrames,
     })
+    if not ok and not sHudWarningShown then
+        print("[SteveCraft] HUD render failed: " .. tostring(err))
+        sHudWarningShown = true
+    end
 end
 
 local function get_build_system_state()
@@ -861,6 +905,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         native_engine = Native,
         voxel_renderer = VoxelRenderer,
         grid_transform = GridTransform,
+        section_updates = SectionUpdates,
     }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = Camera.ensure,
@@ -877,6 +922,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
             cell_size = GRID_CELL_SIZE,
             object_scale = GRID_OBJECT_SCALE,
             max_blocks = GRID_MAX_BLOCKS_PER_AREA,
+            section_size = GRID_SECTION_SIZE,
             storage_chunk_size = GRID_STORAGE_CHUNK_SIZE,
             inventory_size = INVENTORY_SIZE,
             max_stack = INVENTORY_MAX_STACK,
@@ -908,21 +954,24 @@ end
 Assets.import_all(STEVECRAFT_MOD_DIR)
 VoxelRenderer.configure(Assets.get_block_textures())
 VoxelRenderer.install_hooks()
-Sounds.load()
 
--- SteveCraft replaces Mario's action sounds and voice with its own movement
--- audio. Ambient, object, menu, and environmental sound banks remain enabled.
+-- Register gameplay and HUD hooks before loading audio. A ModAudio sample
+-- failure must never prevent the inventory interface from being installed.
 if type(HOOK_ON_PLAY_SOUND) == "number" then
     hook_event(HOOK_ON_PLAY_SOUND, Sounds.filter_mario_sounds)
 end
-
--- Native Mario movement is retained. The per-area grid creates real surface objects.
 hook_event(HOOK_MARIO_UPDATE, apply_steve_to_mario)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, consume_build_controls)
 hook_event(HOOK_ON_HUD_RENDER, render_build_inventory)
 hook_event(HOOK_ON_WARP, on_warp)
 if type(HOOK_ON_LEVEL_INIT) == "number" then
     hook_event(HOOK_ON_LEVEL_INIT, on_warp)
+end
+
+local sound_ok, sound_result = pcall(Sounds.load)
+if not sound_ok then
+    print("[SteveCraft] WARNING: audio initialization failed but HUD/gameplay remain active: "
+        .. tostring(sound_result))
 end
 
 print("[SteveCraft] Standalone mod loaded (" .. STEVECRAFT_VERSION .. ").")
