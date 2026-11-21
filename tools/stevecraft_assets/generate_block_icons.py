@@ -20,7 +20,7 @@ BLOCKS = {
 
 
 def face(texture: Image.Image, size: tuple[int, int], polygon: list[tuple[int, int]]) -> Image.Image:
-    resized = texture.convert("RGBA").resize(size, Image.Resampling.NEAREST)
+    resized = texture.convert("RGBA").resize(size, Image.NEAREST)
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).polygon(
         [(x - min(p[0] for p in polygon), y - min(p[1] for p in polygon)) for x, y in polygon],
