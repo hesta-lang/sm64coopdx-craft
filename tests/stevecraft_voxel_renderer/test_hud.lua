@@ -59,7 +59,7 @@ function djui_hud_print_text() end
 
 local HUD = require("hud")
 HUD.render({
-    inventory_loaded = true,
+    inventory_loaded = false,
     inventory = {
         [1] = { id = "minecraft:stone", count = 64 },
         [2] = { id = "minecraft:grass_block", count = 63 },
