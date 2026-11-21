@@ -21,9 +21,14 @@ local function state_from_mario(mario)
     if type(ACT_FLAG_MOVING) == "number" and (action & ACT_FLAG_MOVING) ~= 0 then
         return "move", native_state
     end
-    -- Some Android builds expose action flags differently; MarioState still
-    -- supplies authoritative floor and forward velocity values.
-    if native_state.floor ~= nil and math.abs(native_state.forward_speed or 0) >= 2 then
+    -- The Android character/controller port can report a movement action
+    -- without ACT_FLAG_MOVING. Use the real ground-contact and horizontal
+    -- velocity fields as a reliable fallback.
+    local velocity_x = native_state.velocity_x or 0
+    local velocity_z = native_state.velocity_z or 0
+    local horizontal_speed = math.sqrt(velocity_x * velocity_x + velocity_z * velocity_z)
+    if native_state.floor ~= nil
+        and math.max(math.abs(native_state.forward_speed or 0), horizontal_speed) >= 1.5 then
         return "move", native_state
     end
     return "idle", native_state
@@ -49,18 +54,21 @@ function Physics.update(mario, sounds, get_footstep_material)
         return state
     end
 
-    local speed = math.abs(native_state.forward_speed)
-    if speed < 2 then return state end
+    local vx = native_state.velocity_x or 0
+    local vz = native_state.velocity_z or 0
+    local planar_speed = math.sqrt(vx * vx + vz * vz)
+    local speed = math.max(math.abs(native_state.forward_speed or 0), planar_speed)
+    if speed < 1.5 then return state end
 
     local frame = tonumber(gGlobalTimer) or 0
-    local interval = math.max(9, math.min(18, math.floor(19 - speed * 0.45)))
+    local interval = math.max(8, math.min(16, math.floor(17 - speed * 0.4)))
     if frame - last_step_frame >= interval then
         last_step_frame = frame
         local material = type(get_footstep_material) == "function"
             and get_footstep_material(mario)
             or "stone"
         if sounds and type(sounds.play_footstep) == "function" then
-            sounds.play_footstep(material, native_state.position, math.min(0.62, 0.38 + speed * 0.012))
+            sounds.play_footstep(material, native_state.position, math.min(1.0, 0.78 + speed * 0.018))
         end
     end
 
