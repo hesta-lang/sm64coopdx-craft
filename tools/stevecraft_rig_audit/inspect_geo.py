@@ -11,6 +11,13 @@ from collections import Counter
 from pathlib import Path
 
 MAGIC = b"DYNOSBIN"
+MARIO_ANIM_PART_NAMES = [
+    "ROOT", "BUTT", "TORSO", "HEAD",
+    "UPPER_LEFT", "LEFT_ARM", "LEFT_FOREARM", "LEFT_HAND",
+    "UPPER_RIGHT", "RIGHT_ARM", "RIGHT_FOREARM", "RIGHT_HAND",
+    "LOWER_LEFT", "LEFT_THIGH", "LEFT_LEG", "LEFT_FOOT",
+    "LOWER_RIGHT", "RIGHT_THIGH", "RIGHT_LEG", "RIGHT_FOOT",
+]
 EXPECTED_SHA256 = "773446e965b4123f032faf1948528a5b1541d4ca7b3fae9fe8220ce0769fcad1"
 PNTR = 0x52544E50
 FUNC = 0x434E5546
@@ -141,6 +148,7 @@ def inspect(binary: Path, name: str = "mario_geo") -> dict:
             yz = words[i + 1]["value"]
             animated.append({
                 "index": len(animated),
+                "channel_name": MARIO_ANIM_PART_NAMES[len(animated)] if len(animated) < len(MARIO_ANIM_PART_NAMES) else "UNKNOWN",
                 "word_index": i,
                 "depth": depth,
                 "translation": [
