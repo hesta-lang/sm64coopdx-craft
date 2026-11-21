@@ -265,15 +265,16 @@ CI checks that the embedded bytes are exactly equal to the original binary
 and that the ModFS import/URI path works against a mocked API. This is not a
 substitute for loading the actor on Android.
 
-### First-person hand extraction
+### First-person hand extraction audit
 
-The first-person renderer requests `mario_geo_right_hand` only after the
-Steve actor has been registered. It creates a local non-synchronized object,
-sets its model to that sub-GeoLayout, and positions it from the native
-first-person camera's position, yaw and pitch. The hand uses the actor's own
-display-list/texture data instead of a newly generated mesh. If that
-sub-GeoLayout is missing or cannot be resolved, the renderer leaves the hand
-hidden and logs a warning. Device-level visual validation remains required.
+The initial implementation tried to resolve `mario_geo_right_hand` after the
+Steve actor registered. The read-only rig audit found **zero** layouts with
+that name in `minecraft_steve_geo.bin`. This lookup is unsafe because DynOS
+checks built-in layouts after custom/loaded actors; it could therefore return
+Mario's built-in hand. The standalone hand renderer has been removed rather
+than showing the wrong model. A future extractor must locate and expose the
+actual hand display-list subtree from this actor, or add a separately verified
+SM64CoopDX-compatible hand asset before a camera-relative object is added.
 
 ### Remaining gaps
 
