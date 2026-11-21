@@ -196,14 +196,16 @@ function HUD.render(context)
             -- bottom, with the original 16x16 pixel texture as the front face.
             local icon_x = slot_x + 1 * hotbar_scale
             local icon_y = slot_y + 1 * hotbar_scale
-            rect(icon_x + 14 * hotbar_scale, icon_y + 2 * hotbar_scale,
-                2 * hotbar_scale, 13 * hotbar_scale, 20, 20, 20, 255)
-            rect(icon_x + 2 * hotbar_scale, icon_y + 14 * hotbar_scale,
-                14 * hotbar_scale, 2 * hotbar_scale, 28, 28, 28, 255)
             if not render_tile(icon, icon_x, icon_y, hotbar_scale) then
                 rect(icon_x + 2 * hotbar_scale, icon_y + 2 * hotbar_scale,
                     12 * hotbar_scale, 12 * hotbar_scale, 130, 130, 130, 255)
             end
+            -- Draw extrusion after the front texture so the shaded right and
+            -- lower edges remain visible, like a tiny Minecraft inventory cube.
+            rect(icon_x + 14 * hotbar_scale, icon_y + 2 * hotbar_scale,
+                2 * hotbar_scale, 13 * hotbar_scale, 20, 20, 20, 255)
+            rect(icon_x + 2 * hotbar_scale, icon_y + 14 * hotbar_scale,
+                14 * hotbar_scale, 2 * hotbar_scale, 28, 28, 28, 255)
             text(item.count or 0, slot_x + 11 * hotbar_scale, slot_y + 12 * hotbar_scale, 0.42 * hotbar_scale)
         end
     end
