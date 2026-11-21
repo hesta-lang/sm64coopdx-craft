@@ -1,5 +1,7 @@
 -- SteveCraft routes the official Java 26.3 block samples through ModAudio.
--- The binary OGG files are copied into the mod's ModFS by systems/assets.lua.
+-- Samples are always played through audio_sample_play, which uses the engine's
+-- SFX volume controls. Stream-only channel properties must never be assigned
+-- to a ModAudio sample.
 
 local Sounds = {}
 local samples = {}
@@ -82,10 +84,6 @@ function Sounds.load(force)
             if ok and loaded_sample ~= nil then
                 sample = loaded_sample
                 samples[name] = sample
-                if type(MOD_AUDIO_CHANNEL_SFX) == "number" then
-                    pcall(function() sample.channel = MOD_AUDIO_CHANNEL_SFX end)
-                end
-                pcall(function() sample.baseVolume = 1.0 end)
             else
                 failed = failed + 1
                 if failed <= 2 then
@@ -150,13 +148,32 @@ function Sounds.reset_audio_cache()
     last_load_count = -1
 end
 
+function Sounds.debug_status()
+    local loaded, pending = 0, 0
+    for name in pairs(sample_files) do
+        local sample = samples[name]
+        if sample_is_ready(sample) then
+            loaded = loaded + 1
+        elseif sample ~= nil then
+            pending = pending + 1
+        end
+    end
+    return {
+        loaded = loaded,
+        pending = pending,
+        total = SAMPLE_COUNT,
+        attempted = attempted,
+        sfx_playback = type(audio_sample_play) == "function",
+    }
+end
+
 function Sounds.play_footstep(material, position, volume)
     material = type(material) == "string" and material:lower() or "stone"
     if material == "oak" or material == "planks" or material == "log" then material = "wood" end
     if samples[material .. "_step"] == nil then material = "stone" end
     local gains = {
-        stone = 0.92, dirt = 0.82, grass = 0.78,
-        wood = 0.88, glass = 0.84, sand = 0.82,
+        stone = 1.0, dirt = 1.0, grass = 0.98,
+        wood = 1.0, glass = 0.95, sand = 1.0,
     }
     return Sounds.play(material .. "_step", position, volume or gains[material] or 0.86)
 end
