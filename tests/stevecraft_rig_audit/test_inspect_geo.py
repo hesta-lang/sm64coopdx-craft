@@ -31,6 +31,17 @@ class SteveRigAuditTests(unittest.TestCase):
         self.assertIn("mario_Left_Leg_mesh_layer_1", names)
         self.assertIn("mario_Right_Leg_mesh_layer_1_with_layer_1_revert", names)
 
+    def test_animated_channel_names_match_engine_mario_anim_part_order(self):
+        result = inspect(BINARY)
+        names = [part["channel_name"] for part in result["animated_parts"]]
+        self.assertEqual(names, [
+            "ROOT", "BUTT", "TORSO", "HEAD",
+            "UPPER_LEFT", "LEFT_ARM", "LEFT_FOREARM", "LEFT_HAND",
+            "UPPER_RIGHT", "RIGHT_ARM", "RIGHT_FOREARM", "RIGHT_HAND",
+            "LOWER_LEFT", "LEFT_THIGH", "LEFT_LEG", "LEFT_FOOT",
+            "LOWER_RIGHT", "RIGHT_THIGH", "RIGHT_LEG", "RIGHT_FOOT",
+        ])
+
     def test_head_mesh_is_separate_display_list_node(self):
         result = inspect(BINARY)
         names = {
