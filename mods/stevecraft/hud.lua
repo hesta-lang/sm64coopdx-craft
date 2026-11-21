@@ -168,7 +168,7 @@ function HUD.render(context)
         end
     end
 
-    local icon_scale = math.max(0.55, math.min(0.78, screen_width / 440))
+    local icon_scale = math.max(0.65, math.min(0.90, screen_width / 400))
     local row_width = 10 * 16 * icon_scale + 9 * 1.5 * icon_scale
     local meter_y = screen_height - 58 * icon_scale - 32
     render_meter_row("armor", context.armor_points or 0, 4, meter_y - 14 * icon_scale, icon_scale)
