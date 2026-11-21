@@ -751,6 +751,14 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
     __STEVECRAFT_TEST.constants = Model.animation_constants
     __STEVECRAFT_TEST.apply_player_update = apply_steve_to_mario
     __STEVECRAFT_TEST.model = Model
+    __STEVECRAFT_TEST.modules = {
+        blocks = Blocks,
+        sounds = Sounds,
+        physics = Physics,
+        camera = Camera,
+        hud = HUD,
+        model = Model,
+    }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = Camera.ensure,
         get_camera_ray = Camera.get_ray,
