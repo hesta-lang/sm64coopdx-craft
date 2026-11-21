@@ -6,6 +6,8 @@ local sync_spawn_calls = 0
 local local_spawn_calls = 0
 local hooks = {}
 local behavior = nil
+local behaviors = {}
+local next_behavior_id = 900
 local collision_calls = 0
 local hud_lines = {}
 local hud_rect_calls = 0
@@ -131,10 +133,14 @@ function mod_storage_remove(key)
 end
 
 function hook_behavior(_, object_list, synchronized, init_callback, loop_callback)
-    assert(object_list == OBJ_LIST_SURFACE, "block behavior must live in the surface object list")
-    assert(synchronized == false, "local persistent grid must not register a synchronized behavior")
-    behavior = { init = init_callback, loop = loop_callback }
-    return 900
+    assert(object_list == OBJ_LIST_SURFACE, "SteveCraft surface behaviors must use the surface object list")
+    assert(synchronized == false, "local persistent behaviors must not register synchronized objects")
+    local id = next_behavior_id
+    next_behavior_id = next_behavior_id + 1
+    local registered = { init = init_callback, loop = loop_callback }
+    behaviors[id] = registered
+    if behavior == nil then behavior = registered end
+    return id
 end
 
 function spawn_sync_object(...)
@@ -143,14 +149,14 @@ function spawn_sync_object(...)
 end
 
 function spawn_non_sync_object(behavior_id, model_id, x, y, z, initialize)
-    assert(behavior_id == 900, "unexpected behavior ID")
+    assert(behaviors[behavior_id] ~= nil, "spawn used an unregistered behavior ID")
     assert(model_id == E_MODEL_BREAKABLE_BOX, "unexpected block placeholder model")
     local object = {
         oPosX = x, oPosY = y, oPosZ = z,
         activeFlags = 1,
     }
     if initialize then initialize(object) end
-    behavior.init(object)
+    behaviors[behavior_id].init(object)
     spawned[#spawned + 1] = object
     local_spawn_calls = local_spawn_calls + 1
     return object
