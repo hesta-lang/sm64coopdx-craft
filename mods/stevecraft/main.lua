@@ -387,6 +387,7 @@ local function deactivate_world_objects()
             pcall(function() object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
         end
     end
+    Blocks.clear_spawned()
 end
 
 local function load_world_grid(world_prefix)
@@ -459,7 +460,8 @@ local function place_grid_block(x, y, z)
     sWorldBlocks[key] = { id = block_id, x = x, y = y, z = z, object = object }
     sWorldBlockCount = sWorldBlockCount + 1
     selected.count = selected.count - 1
-    Sounds.play_place(block_id, { x = cell_center(x, y, z) })
+    local wx, wy, wz = cell_center(x, y, z)
+    Sounds.play_place(block_id, { x = wx, y = wy, z = wz })
     save_inventory()
     save_world_grid()
     return true
