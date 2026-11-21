@@ -68,14 +68,12 @@ print("PASS: ModFs userdata compatibility and embedded ModFS resource import")
 package.loaded["embedded_block_textures"] = nil
 package.loaded["systems/embedded_block_textures"] = nil
 local old_dofile = dofile
-local old_require = require
+local old_package_path, old_package_cpath = package.path, package.cpath
 local fallback_called = false
-_G.require = function(name)
-    if name == "embedded_block_textures" or name == "systems/embedded_block_textures" then
-        error("simulated mobile mod-file module lookup failure: " .. name)
-    end
-    return old_require(name)
-end
+-- Hide both generated manifest locations from require to force the runtime's
+-- path-based dofile recovery branch.
+package.path = "/missing_stevecraft_modules/?.lua"
+package.cpath = "/missing_stevecraft_modules/?.so"
 _G.dofile = function(path)
     assert(path == "SteveCraft/embedded_block_textures.lua",
         "root manifest fallback used an unexpected path: " .. tostring(path))
@@ -84,7 +82,7 @@ _G.dofile = function(path)
 end
 local fallback_ok, fallback_report = Assets.install_embedded_resources(dummy, "SteveCraft/")
 _G.dofile = old_dofile
-_G.require = old_require
+package.path, package.cpath = old_package_path, old_package_cpath
 assert(fallback_called, "root manifest fallback was not attempted")
 assert(fallback_ok == true and fallback_report.installed == 1,
     "root embedded manifest fallback did not import resources")
