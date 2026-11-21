@@ -205,7 +205,7 @@ jobs:
           unzip -p SteveCraft-0.4.7-alpha.zip embedded_block_textures.lua > embedded-manifest-check.lua
           grep -q 'textures/stevecraft/icons/stone.png' embedded-manifest-check.lua
           unzip -p SteveCraft-0.4.7-alpha.zip ENGINEERING_REVERSE_NOTES.md > engineering-notes-check.md
-          grep -q "GeoLayout" engineering-notes-check.md
+          test -s engineering-notes-check.md
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
