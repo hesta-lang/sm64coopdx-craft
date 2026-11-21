@@ -1309,8 +1309,7 @@ local function get_steve_geo_binary()
 end
 
 local function ensure_steve_actor_in_modfs()
-    if type(mod_fs_get) ~= "function" or type(mod_fs_create) ~= "function"
-        or type(MOD_FS_URI_FORMAT) ~= "string" then
+    if type(mod_fs_get) ~= "function" or type(MOD_FS_URI_FORMAT) ~= "string" then
         if not sModelAssetWarningShown then
             print("[SteveCraft] ERROR: SM64CoopDX ModFS APIs are unavailable; Steve actor cannot be registered.")
             sModelAssetWarningShown = true
@@ -1322,8 +1321,10 @@ local function ensure_steve_actor_in_modfs()
     local get_ok, get_result = pcall(mod_fs_get)
     if get_ok then mod_fs = get_result end
     if mod_fs == nil then
-        local create_ok, create_result = pcall(mod_fs_create)
-        if create_ok then mod_fs = create_result end
+        if type(mod_fs_create) == "function" then
+            local create_ok, create_result = pcall(mod_fs_create)
+            if create_ok then mod_fs = create_result end
+        end
     end
     if mod_fs == nil or type(mod_fs.modPath) ~= "string" or mod_fs.modPath == "" then
         if not sModelAssetWarningShown then
