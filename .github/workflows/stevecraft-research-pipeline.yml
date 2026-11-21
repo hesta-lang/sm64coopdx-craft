@@ -11,6 +11,7 @@ on:
       - "tools/stevecraft_rig_audit/**"
       - "tests/stevecraft_rig_audit/**"
       - "tests/stevecraft_animation/**"
+      - "tests/stevecraft_build_system/**"
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
       - "mods/stevecraft/main.lua"
       - "mods/stevecraft/README.md"
@@ -25,6 +26,7 @@ on:
       - "tools/stevecraft_rig_audit/**"
       - "tests/stevecraft_rig_audit/**"
       - "tests/stevecraft_animation/**"
+      - "tests/stevecraft_build_system/**"
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
       - "mods/stevecraft/main.lua"
       - "mods/stevecraft/README.md"
@@ -320,3 +322,34 @@ jobs:
           grep -q "STEVE_ANIMATION_PARTS = 20" mods/stevecraft/main.lua
           grep -q "0x40" mods/stevecraft/main.lua
           echo "SM64CoopDX custom animation API and no-root-translation contract found."
+  
+  validate-stevecraft-build-system:
+    name: Validate SteveCraft inventory, construction grid, and dynamic collisions
+    needs:
+      - validate-steve-animations
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lua 5.4
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+
+      - name: Validate complete mod Lua syntax
+        run: luac5.4 -p mods/stevecraft/main.lua
+
+      - name: Run grid and inventory regression tests
+        run: lua5.4 tests/stevecraft_build_system/test_build_system.lua
+
+      - name: Check required SM64CoopDX runtime collision APIs
+        run: |
+          grep -q "hook_behavior" mods/stevecraft/main.lua
+          grep -q "OBJ_LIST_SURFACE" mods/stevecraft/main.lua
+          grep -q "load_object_collision_model" mods/stevecraft/main.lua
+          grep -q "gGlobalObjectCollisionData.breakable_box_seg8_collision_08012D70" mods/stevecraft/main.lua
+          grep -q "spawn_sync_object" mods/stevecraft/main.lua
+          grep -q "mod_storage_load_all" mods/stevecraft/main.lua
+          grep -q "GRID_MAX_BLOCKS_PER_AREA = 128" mods/stevecraft/main.lua
+          echo "Surface-object collision, persistence, and grid-cap APIs are present."
