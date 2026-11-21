@@ -4,6 +4,8 @@ local required = {
     "textures/gui/sprites/hud/hotbar.png",
     "textures/gui/sprites/hud/hotbar_selection.png",
     "textures/gui/sprites/hud/crosshair.png",
+    "textures/gui/sprites/hud/experience_bar_background.png",
+    "textures/gui/sprites/hud/experience_bar_progress.png",
     "textures/gui/sprites/hud/heart/full.png",
     "textures/gui/sprites/hud/heart/half.png",
     "textures/gui/sprites/hud/heart/container.png",
