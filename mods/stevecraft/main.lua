@@ -973,6 +973,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         parts = STEVE_ANIMATION_PARTS,
         expected_index_length = 6 + (STEVE_ANIMATION_PARTS * 3 * 2),
     }
+    __STEVECRAFT_TEST.constants = __STEVECRAFT_TEST.animation_constants
     __STEVECRAFT_TEST.build_system = {
         catalog = BLOCK_CATALOG,
         default_hotbar = copy_table(DEFAULT_HOTBAR),
