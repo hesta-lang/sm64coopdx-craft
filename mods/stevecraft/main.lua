@@ -320,7 +320,7 @@ local function grid_block_loop(obj)
     -- Euler angles/angular velocity before collision and GeoLayout processing.
     GridTransform.apply(obj, GRID_CELL_SIZE)
     local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
-    if block_id then VoxelRenderer.attach(obj, block_id) end
+    if block_id then VoxelRenderer.attach(obj, block_id, sWorldBlocks) end
 
     if obj.collisionData ~= nil and type(load_object_collision_model) == "function" then
         load_object_collision_model()
