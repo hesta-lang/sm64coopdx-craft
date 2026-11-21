@@ -478,6 +478,105 @@ if type(hook_behavior) == "function" then
     end
 end
 
+
+local function terrain_mask_object_init(obj)
+    obj.oFlags = OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE
+    obj.oDrawingDistance = GRID_CELL_SIZE * 60
+    obj.oCollisionDistance = 0
+    obj.oOpacity = 255
+    obj.collisionData = nil
+    if type(obj_scale) == "function" then obj_scale(obj, 1.0) end
+end
+
+local function terrain_mask_object_loop(obj)
+    if VoxelRenderer.is_ready(obj) and VoxelRenderer.is_surface_mask(obj) then return end
+    local ok, pointer = pcall(function() return obj._pointer end)
+    local key = ok and pointer ~= nil and tostring(pointer) or nil
+    local snapshot = key and sTerrainMaskRetryByObject[key] or nil
+    if snapshot and VoxelRenderer.attach_surface_mask(obj, snapshot) then
+        sTerrainMaskRetryByObject[key] = nil
+    end
+end
+
+if type(hook_behavior) == "function" and type(OBJ_LIST_SURFACE) == "number" then
+    local ok, behavior_id = pcall(
+        hook_behavior,
+        nil,
+        OBJ_LIST_SURFACE,
+        false,
+        terrain_mask_object_init,
+        terrain_mask_object_loop
+    )
+    if ok then
+        sTerrainMaskBehaviorId = behavior_id
+    else
+        print("[SteveCraft] WARNING: terrain-hole renderer behavior could not register: " .. tostring(behavior_id))
+    end
+end
+
+local function spawn_terrain_mask(snapshot)
+    if type(snapshot) ~= "table" or type(snapshot.signature) ~= "string" then return false end
+    if sSpawnedTerrainMasks[snapshot.signature] then return true end
+    if sTerrainMaskBehaviorId == nil or type(E_MODEL_BREAKABLE_BOX) ~= "number"
+        or type(spawn_non_sync_object) ~= "function" then
+        print("[SteveCraft] WARNING: terrain collision was removed, but its visual hole mask is unavailable.")
+        return false
+    end
+
+    local vertices = snapshot.vertices
+    if type(vertices) ~= "table" or #vertices ~= 3 then return false end
+    local center_x = ((vertices[1].x or 0) + (vertices[2].x or 0) + (vertices[3].x or 0)) / 3
+    local center_y = ((vertices[1].y or 0) + (vertices[2].y or 0) + (vertices[3].y or 0)) / 3
+    local center_z = ((vertices[1].z or 0) + (vertices[2].z or 0) + (vertices[3].z or 0)) / 3
+
+    local function initialize(obj)
+        terrain_mask_object_init(obj)
+        if not VoxelRenderer.attach_surface_mask(obj, snapshot) then
+            local ok, pointer = pcall(function() return obj._pointer end)
+            if ok and pointer ~= nil then
+                sTerrainMaskRetryByObject[tostring(pointer)] = snapshot
+            end
+        end
+    end
+
+    local ok, object = pcall(
+        spawn_non_sync_object,
+        sTerrainMaskBehaviorId,
+        E_MODEL_BREAKABLE_BOX,
+        center_x, center_y, center_z,
+        initialize
+    )
+    if not ok or object == nil then
+        print("[SteveCraft] WARNING: terrain-hole visual spawn failed: "
+            .. tostring(ok and "spawn_returned_nil" or object))
+        return false
+    end
+
+    sTerrainMaskObjects[snapshot.signature] = object
+    sSpawnedTerrainMasks[snapshot.signature] = true
+    if not VoxelRenderer.is_surface_mask(object) then
+        local pointer_ok, pointer = pcall(function() return object._pointer end)
+        if pointer_ok and pointer ~= nil then
+            sTerrainMaskRetryByObject[tostring(pointer)] = snapshot
+        end
+        VoxelRenderer.attach_surface_mask(object, snapshot)
+    end
+    return true
+end
+
+local function process_pending_terrain_masks()
+    if #sPendingTerrainMasks == 0 then return end
+    local world_key = get_terrain_world_key()
+    if not load_destroyed_terrain(world_key) then return end
+    local pending = sPendingTerrainMasks
+    sPendingTerrainMasks = {}
+    for _, snapshot in ipairs(pending) do
+        if snapshot and not sSpawnedTerrainMasks[snapshot.signature] then
+            spawn_terrain_mask(snapshot)
+        end
+    end
+end
+
 local function grid_object_registry_key(x, y, z)
     return tostring(sCurrentWorldKey or "unknown") .. ":" .. cell_key(x, y, z)
 end
