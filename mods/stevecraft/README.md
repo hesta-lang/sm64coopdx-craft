@@ -83,18 +83,17 @@ dynamic surface objects that load collision through
 
 ## First-person hand and custom skins
 
-- A local camera-relative hand object is now created while first person is
-  active. It reuses the `mario_geo_right_hand` sub-GeoLayout from the same
-  imported Steve DYNOSBIN; no replacement hand mesh is generated.
-- The renderer resolves that layout only after the Steve actor has registered.
-  If DynOS cannot resolve it, the hand is left hidden rather than silently
-  displaying Mario's built-in hand.
-- The object's camera-relative position/orientation and visual scale still
-  need validation in the Android game. CI can validate the source path and
-  read-only existence of the layout, not the final on-screen composition.
-- Runtime skin replacement is not implemented yet. A PNG alone cannot replace
-  textures already referenced by a compiled display list; the actor needs an
-  explicit dynamic texture-binding path before custom skins can work.
+The crosshair and camera ray are implemented, but a separate first-person
+hand is **not included**. A read-only audit of the supplied actor found zero
+GeoLayouts named `mario_geo_right_hand`; asking DynOS for that name would risk
+falling back to Mario's built-in hand. This version deliberately does not do
+that. The correct next step is to extract the hand mesh subtree from the
+existing actor binary or add a compatible actor asset that actually contains
+a standalone hand layout.
+
+Runtime skin replacement is also not implemented. A PNG alone cannot replace
+textures already referenced by a compiled display list; the model needs a
+verified dynamic texture-binding path before arbitrary custom skins can work.
 
 ## Multiplayer and persistence boundary
 
