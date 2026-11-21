@@ -133,11 +133,10 @@ public final class BlockRegistryDump implements ModInitializer {
         runtime.put("is_signal_source", state.isSignalSource());
 
         Map<String, Object> redstone = new LinkedHashMap<>();
-        redstone.put("sampled_conductor", state.isRedstoneConductor(level, pos));
-        redstone.put("sampled_signal_up", state.getSignal(level, pos, Direction.UP));
-        redstone.put("sampled_analog_signal_up", state.hasAnalogOutputSignal()
-            ? state.getAnalogOutputSignal(level, pos, Direction.UP) : 0);
-        redstone.put("context", "empty_server_world_at_sample_position");
+        redstone.put("is_signal_source", state.isSignalSource());
+        redstone.put("has_analog_output_signal", state.hasAnalogOutputSignal());
+        redstone.put("signal_values_sampled", false);
+        redstone.put("context", "capability_flags_only; signal values require a matching state placed in the sampled world");
         runtime.put("redstone", redstone);
 
         runtime.put("collision_shape_boxes", shapeBoxes(state.getCollisionShape(level, pos)));
