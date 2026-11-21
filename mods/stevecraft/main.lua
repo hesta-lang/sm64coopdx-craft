@@ -483,6 +483,7 @@ local function deactivate_world_objects()
         if object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
             pcall(function() object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
         end
+        if object then VoxelRenderer.detach(object) end
     end
     Blocks.clear_spawned()
     clear_all_world_grids()
