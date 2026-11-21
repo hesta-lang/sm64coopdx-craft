@@ -86,20 +86,25 @@ function Sounds.load(force)
                     pcall(function() sample.channel = MOD_AUDIO_CHANNEL_SFX end)
                 end
                 pcall(function() sample.baseVolume = 1.0 end)
-            elseif failed < 2 then
-                print("[SteveCraft] WARNING: failed to create " .. path .. " from "
-                    .. tostring(uri) .. ": " .. tostring(loaded_sample))
+            else
+                failed = failed + 1
+                if failed <= 2 then
+                    print("[SteveCraft] WARNING: failed to create " .. path .. " from "
+                        .. tostring(uri) .. ": " .. tostring(loaded_sample))
+                end
             end
         end
 
         -- Keep not-yet-ready ModAudio objects and poll their loaded flag on
         -- subsequent retries instead of throwing away a valid async load.
-        if sample_is_ready(sample) then
-            loaded = loaded + 1
-        else
-            failed = failed + 1
-            if failed <= 2 then
-                print("[SteveCraft] WARNING: waiting for ModAudio resource " .. path .. " to finish loading.")
+        if sample ~= nil then
+            if sample_is_ready(sample) then
+                loaded = loaded + 1
+            else
+                failed = failed + 1
+                if failed <= 2 then
+                    print("[SteveCraft] WARNING: waiting for ModAudio resource " .. path .. " to finish loading.")
+                end
             end
         end
     end
