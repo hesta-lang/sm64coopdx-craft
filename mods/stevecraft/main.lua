@@ -1468,6 +1468,10 @@ local function get_current_extended_model_id(obj)
     return currentId
 end
 
+local update_steve_health
+local ensure_first_person_camera
+local update_first_person_hand
+
 local function apply_steve_to_mario(m)
     if m == nil or m.playerIndex ~= 0 then return end
     update_steve_health(m)
@@ -1625,9 +1629,6 @@ local sLastMarioHealth = nil
 local sMiningCellKey = nil
 local sMiningFrames = 0
 local sMiningRequiredFrames = 0
-local update_steve_health
-local ensure_first_person_camera
-local update_first_person_hand
 
 local function copy_table(source)
     local result = {}
@@ -2785,6 +2786,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         expected_index_length = 6 + (STEVE_ANIMATION_PARTS * 3 * 2),
     }
     __STEVECRAFT_TEST.constants = __STEVECRAFT_TEST.animation_constants
+    __STEVECRAFT_TEST.apply_player_update = apply_steve_to_mario
     __STEVECRAFT_TEST.model = {
         get_actor_binary = get_steve_geo_binary,
         ensure_actor_in_modfs = ensure_steve_actor_in_modfs,
