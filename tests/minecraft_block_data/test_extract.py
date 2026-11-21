@@ -48,7 +48,7 @@ class BlockDataExtractorTests(unittest.TestCase):
             root = Path(temporary)
             jar, output = root / "fixture.jar", root / "blocks.json"
             self.make_fixture_jar(jar)
-            result = extract_from_jar(jar, "26.3", output)
+            result = extract_from_jar(jar, "26.3", output, external_sound_definitions={"minecraft": {"entity.player.levelup": {"sounds": ["entity/player/levelup"]}}})
             self.assertEqual(len(result["blocks"]), 1)
             block = result["blocks"][0]
             self.assertEqual(block["id"], "minecraft:stone")
