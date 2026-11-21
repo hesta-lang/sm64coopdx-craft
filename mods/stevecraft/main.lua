@@ -194,9 +194,9 @@ local function terrain_storage_prefix(world_key)
 end
 
 local function get_terrain_world_key()
-    if sCurrentWorldKey ~= nil then return sCurrentWorldKey end
     local world_key = get_world_context()
-    return world_key
+    if world_key ~= nil then return world_key end
+    return sCurrentWorldKey
 end
 
 local function load_destroyed_terrain(world_key)
@@ -965,10 +965,18 @@ local function terrain_mining_position(position, mario)
 end
 
 local function play_terrain_break_sound(mario, position)
-    local material = get_footstep_material(mario)
+    local material = "stone"
+    local addend = mario and tonumber(mario.terrainSoundAddend) or 0
+    local terrain = (math.floor(addend / 0x10000)) & 0xFF
+    if terrain == (SOUND_TERRAIN_GRASS or 1) then
+        material = "grass"
+    elseif terrain == (SOUND_TERRAIN_SAND or 7) then
+        material = "sand"
+    elseif terrain == (SOUND_TERRAIN_SNOW or 5) or terrain == (SOUND_TERRAIN_ICE or 6) then
+        material = "dirt"
+    end
     local block_id = material == "grass" and "minecraft:grass_block"
         or (material == "dirt" or material == "sand") and "minecraft:dirt"
-        or (material == "wood") and "minecraft:oak_planks"
         or "minecraft:stone"
     Sounds.play_break(block_id, terrain_mining_position(position, mario))
 end
