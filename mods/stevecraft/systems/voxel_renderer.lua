@@ -15,6 +15,7 @@ local warned = {}
 
 local FACE_LAYOUTS = {
     {
+        normal = { 0, 0, 1 },
         texture = "side",
         vertices = {
             { -100, -100,  100 }, {  100, -100,  100 },
@@ -22,6 +23,7 @@ local FACE_LAYOUTS = {
         },
     },
     {
+        normal = { 0, 0, -1 },
         texture = "side",
         vertices = {
             {  100, -100, -100 }, { -100, -100, -100 },
@@ -29,6 +31,7 @@ local FACE_LAYOUTS = {
         },
     },
     {
+        normal = { 0, 1, 0 },
         texture = "top",
         vertices = {
             { -100,  100,  100 }, {  100,  100,  100 },
@@ -36,6 +39,7 @@ local FACE_LAYOUTS = {
         },
     },
     {
+        normal = { 0, -1, 0 },
         texture = "bottom",
         vertices = {
             { -100, -100, -100 }, {  100, -100, -100 },
@@ -43,6 +47,7 @@ local FACE_LAYOUTS = {
         },
     },
     {
+        normal = { 1, 0, 0 },
         texture = "side",
         vertices = {
             {  100, -100,  100 }, {  100, -100, -100 },
@@ -50,6 +55,7 @@ local FACE_LAYOUTS = {
         },
     },
     {
+        normal = { -1, 0, 0 },
         texture = "side",
         vertices = {
             { -100, -100, -100 }, { -100, -100,  100 },
@@ -106,12 +112,13 @@ local function texture_for_block(block_id, face)
     return info, width, height
 end
 
-local function set_vertices(vtx, block_id, face_shading)
+local function set_vertices(vtx, block_id, face_shading, visible_faces)
     local mapping = BLOCK_TEXTURES[block_id]
     if not mapping then return false, "unknown block id" end
 
     local vertex_index = 0
-    for _, face in ipairs(FACE_LAYOUTS) do
+    for mesh_face_index, entry in ipairs(visible_faces) do
+        local face = entry.face
         local info, width, height = texture_for_block(block_id, face)
         if not info then
             return false, "missing texture for " .. tostring(block_id) .. "/" .. face.texture
@@ -122,6 +129,7 @@ local function set_vertices(vtx, block_id, face_shading)
             { 0, max_t }, { max_s, max_t },
             { 0, 0 }, { max_s, 0 },
         }
+        local shade_values = face_shading[entry.shading_index]
         for index, position in ipairs(face.vertices) do
             local vertex = vtx_get_vertex(vtx, vertex_index)
             if vertex == nil then return false, "vtx_get_vertex returned nil" end
@@ -130,7 +138,7 @@ local function set_vertices(vtx, block_id, face_shading)
             vertex.z = position[3]
             vertex.tu = uv[index][1]
             vertex.tv = uv[index][2]
-            local shade = face_shading and face_shading[_] and face_shading[_][index] or 1.0
+            local shade = shade_values and shade_values[index] or 1.0
             local brightness = math.max(0, math.min(255, math.floor(shade * 255 + 0.5)))
             vertex.r = brightness
             vertex.g = brightness
@@ -139,10 +147,10 @@ local function set_vertices(vtx, block_id, face_shading)
             vertex_index = vertex_index + 1
         end
     end
-    return true
+    return true, vertex_index
 end
 
-local function build_mesh(block_id, face_shading, mesh_key)
+local function build_mesh(block_id, face_shading, mesh_key, visible_faces)
     if type(gfx_create) ~= "function" or type(vtx_create) ~= "function"
         or type(gfx_set_command) ~= "function" or type(cast_graph_node) ~= "function"
         or type(gfx_get_next_command) ~= "function"
@@ -157,14 +165,16 @@ local function build_mesh(block_id, face_shading, mesh_key)
     local gfx_name = "stevecraft_voxel_" .. name .. "_dl"
 
     local vtx = type(vtx_get_from_name) == "function" and vtx_get_from_name(vtx_name) or nil
+    local requested_vertices = #visible_faces * 4
+    local allocated_vertices = math.max(1, requested_vertices)
     if vtx == nil then
-        vtx = vtx_create(vtx_name, 24)
+        vtx = vtx_create(vtx_name, allocated_vertices)
     else
-        vtx_resize(vtx, 24)
+        vtx_resize(vtx, allocated_vertices)
     end
-    if vtx == nil then return nil, "could not allocate 24 cube vertices" end
+    if vtx == nil then return nil, "could not allocate voxel vertices" end
 
-    local vertices_ok, vertices_error = set_vertices(vtx, block_id, face_shading)
+    local vertices_ok, vertices_error = set_vertices(vtx, block_id, face_shading, visible_faces)
     if not vertices_ok then return nil, vertices_error end
 
     local gfx = type(gfx_get_from_name) == "function" and gfx_get_from_name(gfx_name) or nil
@@ -196,9 +206,12 @@ local function build_mesh(block_id, face_shading, mesh_key)
         require_command("gsDPSetCombineMode(G_CC_MODULATERGBA, G_CC_MODULATERGBA)")
         require_command("gsSPTexture(0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON)")
         require_command("gsDPSetTile(G_IM_FMT_RGBA, G_IM_SIZ_32b, 0, 0, G_TX_LOADTILE, 0, G_TX_CLAMP, 0, G_TX_NOLOD, G_TX_CLAMP, 0, G_TX_NOLOD)")
-        require_command("gsSPVertex(%v, %i, 0)", vtx, 24)
+        if #visible_faces > 0 then
+            require_command("gsSPVertex(%v, %i, 0)", vtx, #visible_faces * 4)
+        end
 
-        for face_index, face in ipairs(FACE_LAYOUTS) do
+        for face_index, entry in ipairs(visible_faces) do
+            local face = entry.face
             local info, width, height = texture_for_block(block_id, face)
             if info == nil then error("texture disappeared during display-list generation", 0) end
             local row_bytes = width * 4
@@ -237,6 +250,33 @@ local function build_mesh(block_id, face_shading, mesh_key)
         shade_signature = nil,
     }
     return mesh
+end
+
+
+local function visible_faces_for_block(blocks, x, y, z)
+    local visible = {}
+    for face_index, face in ipairs(FACE_LAYOUTS) do
+        local normal = face.normal
+        local neighbour_key = grid_key(
+            x + normal[1], y + normal[2], z + normal[3]
+        )
+        local neighbour = blocks and blocks[neighbour_key] or nil
+        if neighbour == nil then
+            visible[#visible + 1] = {
+                face = face,
+                shading_index = face_index,
+            }
+        end
+    end
+    return visible
+end
+
+local function face_signature(visible_faces)
+    local parts = {}
+    for _, entry in ipairs(visible_faces) do
+        parts[#parts + 1] = tostring(entry.shading_index)
+    end
+    return table.concat(parts, ",")
 end
 
 local function grid_key(x, y, z)
@@ -407,12 +447,16 @@ function Renderer.attach(object, block_id, world_blocks)
     local y = math.floor((tonumber(object.oPosY) or 0) / 90)
     local z = math.floor((tonumber(object.oPosZ) or 0) / 90)
     local face_shading = calculate_face_shading(world_blocks, x, y, z)
+    local visible_faces = visible_faces_for_block(world_blocks, x, y, z)
     local signature = shading_signature(face_shading)
+    local visible_signature = face_signature(visible_faces)
     local mesh = meshes[key]
 
-    if mesh == nil or mesh.block_id ~= block_id or mesh.shade_signature ~= signature then
+    if mesh == nil or mesh.block_id ~= block_id
+        or mesh.shade_signature ~= signature
+        or mesh.face_signature ~= visible_signature then
         local err
-        mesh, err = build_mesh(block_id, face_shading, key)
+        mesh, err = build_mesh(block_id, face_shading, key, visible_faces)
         if mesh == nil then
             if not warned[block_id] then
                 print("[SteveCraft] WARNING: voxel renderer disabled for " .. tostring(block_id) .. ": " .. tostring(err))
@@ -421,6 +465,7 @@ function Renderer.attach(object, block_id, world_blocks)
             return false
         end
         mesh.shade_signature = signature
+        mesh.face_signature = visible_signature
         meshes[key] = mesh
         material_meshes[block_id] = mesh
     end
@@ -434,6 +479,18 @@ end
 
 function Renderer.compute_face_shading(world_blocks, x, y, z)
     return calculate_face_shading(world_blocks or {}, x, y, z)
+end
+
+function Renderer.compute_visible_faces(world_blocks, x, y, z)
+    return visible_faces_for_block(world_blocks or {}, x, y, z)
+end
+
+function Renderer.detach(object)
+    local key = object_key(object)
+    if key == nil then return false end
+    object_blocks[key] = nil
+    meshes[key] = nil
+    return true
 end
 
 function Renderer.get_mesh(block_id)
