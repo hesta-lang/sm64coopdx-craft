@@ -3,8 +3,8 @@ local M = {}
 
 function M.new_placement_guard()
     local last_frame, last_key
-    return function(frame, x, y, z)
-        local key = table.concat({ tostring(x), tostring(y), tostring(z) }, ",")
+    return function(frame, x, y, z, world_key)
+        local key = table.concat({ tostring(world_key or ""), tostring(x), tostring(y), tostring(z) }, ",")
         if frame == last_frame and key == last_key then
             return false, "duplicate_same_frame"
         end
