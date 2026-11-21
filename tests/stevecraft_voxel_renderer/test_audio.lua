@@ -35,6 +35,7 @@ gGlobalTimer = 1
 function mod_fs_get() return { modPath = "SteveCraft" } end
 local fail_one_sample_once = true
 local pending_dirt_sample = nil
+local forbidden_channel_assignments = 0
 local loaded_samples = {}
 local played_samples = {}
 function audio_sample_load(uri)
@@ -72,6 +73,8 @@ assert(pending_dirt_sample ~= nil and pending_dirt_sample.loaded == false,
 pending_dirt_sample.loaded = true
 gGlobalTimer = 241
 assert(Sounds.load() == true, "ModAudio did not detect a previously pending sample becoming ready")
+assert(forbidden_channel_assignments == 0,
+    "sound initialization attempted to assign a stream-only channel to a sample")
 assert(stone_sample.channel == nil,
     "ModAudio sample must not receive the stream-only volume channel property")
 assert(stone_sample.baseVolume == nil,
