@@ -4,13 +4,49 @@
 -- pausable: true
 
 local STEVECRAFT_VERSION = "0.4.2-alpha"
-local Assets = require("assets")
-local Blocks = require("blocks")
-local Sounds = require("sounds")
-local Physics = require("physics")
-local Camera = require("camera")
-local HUD = require("hud")
-local Model = require("model")
+
+-- Resolve modules relative to this mod instead of depending on the host's
+-- current working directory or a globally configured Lua package.path.
+local function stevecraft_mod_directory()
+    if type(debug) == "table" and type(debug.getinfo) == "function" then
+        local ok, info = pcall(debug.getinfo, 1, "S")
+        local source = ok and info and info.source or nil
+        if type(source) == "string" and source:sub(1, 1) == "@" then
+            local path = source:sub(2)
+            local directory = path:match("^(.*[/\\\\])")
+            if directory then return directory end
+        end
+    end
+    return "mods/stevecraft/"
+end
+
+local STEVECRAFT_MOD_DIR = stevecraft_mod_directory()
+if type(package) == "table" and type(package.path) == "string" then
+    local module_path = STEVECRAFT_MOD_DIR .. "?.lua;"
+    if not package.path:find(module_path, 1, true) then
+        package.path = module_path .. package.path
+    end
+end
+
+local function stevecraft_load_system(module_name, file_name)
+    local ok, module = pcall(require, module_name)
+    if ok and type(module) == "table" then return module end
+
+    if type(dofile) == "function" then
+        local fallback_ok, fallback = pcall(dofile, STEVECRAFT_MOD_DIR .. "systems/" .. file_name .. ".lua")
+        if fallback_ok and type(fallback) == "table" then return fallback end
+        error("SteveCraft could not load systems/" .. file_name .. ".lua: " .. tostring(fallback), 0)
+    end
+    error("SteveCraft could not load Lua module " .. module_name .. ": " .. tostring(module), 0)
+end
+
+local Assets = stevecraft_load_system("systems.assets", "assets")
+local Blocks = stevecraft_load_system("systems.blocks", "blocks")
+local Sounds = stevecraft_load_system("systems.sounds", "sounds")
+local Physics = stevecraft_load_system("systems.physics", "physics")
+local Camera = stevecraft_load_system("systems.camera", "camera")
+local HUD = stevecraft_load_system("systems.hud", "hud")
+local Model = stevecraft_load_system("systems.models", "models")
 
 local BLOCK_CATALOG = Blocks.catalog
 local DEFAULT_HOTBAR = Blocks.default_hotbar
