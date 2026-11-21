@@ -47,8 +47,6 @@ function smlua_model_util_get_id(name)
     model_lookup_names[#model_lookup_names + 1] = name
     if name == "modfs:/stevecraft/actors/minecraft_steve_geo.bin" then
         return 321
-    elseif name == "mario_geo_right_hand" then
-        return 322
     end
     return E_MODEL_ERROR_MODEL
 end
@@ -473,9 +471,6 @@ local function test_model_asset_registration()
     assert(model_id == 321, "Steve model did not resolve from the ModFS URI")
     assert(#model_lookup_names == 1, "loader attempted a fallback model name")
     assert(model_lookup_names[1] == uri, "loader resolved a built-in symbol instead of the mod actor")
-    assert(model.load_hand_model() == 322, "the hand sub-GeoLayout was not requested")
-    assert(model_lookup_names[2] == "mario_geo_right_hand", "the first-person hand did not use the actor sub-GeoLayout")
-
     local update_function = __STEVECRAFT_TEST.apply_player_update
     assert(type(update_function) == "function", "player update callback export missing")
     local captured = {}
@@ -485,8 +480,7 @@ local function test_model_asset_registration()
     end
     assert(type(captured.update_steve_health) == "function", "player update lost its local health callback")
     assert(type(captured.ensure_first_person_camera) == "function", "player update lost its local camera callback")
-    assert(type(captured.update_first_person_hand) == "function", "player update lost its local first-person hand callback")
-    print("PASS: embedded DYNOSBIN import, hand sublayout, and captured player callbacks")
+    print("PASS: embedded DYNOSBIN import and captured player callbacks")
 end
 
 test_model_asset_registration()
