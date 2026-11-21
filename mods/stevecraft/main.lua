@@ -322,8 +322,12 @@ local function grid_block_loop(obj)
     -- Keep every placed block snapped to the exact same grid and zero all
     -- Euler angles/angular velocity before collision and GeoLayout processing.
     GridTransform.apply(obj, GRID_CELL_SIZE)
-    -- The display list is generated once on spawn and only rebuilt by the
-    -- local dirty-region updater after a block edit, not every frame.
+    -- Retry only if the engine had not finished creating this object's GeoLayout
+    -- during spawn. Normal frames do not regenerate voxel display lists.
+    local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
+    if block_id and not VoxelRenderer.is_ready(obj) then
+        VoxelRenderer.attach(obj, block_id, sWorldBlocks)
+    end
     if obj.collisionData ~= nil and type(load_object_collision_model) == "function" then
         load_object_collision_model()
     end
