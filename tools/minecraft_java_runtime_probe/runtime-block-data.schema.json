@@ -95,11 +95,11 @@
                     "redstone": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["sampled_conductor", "sampled_signal_up", "sampled_analog_signal_up", "context"],
+                      "required": ["is_signal_source", "has_analog_output_signal", "signal_values_sampled", "context"],
                       "properties": {
-                        "sampled_conductor": { "type": "boolean" },
-                        "sampled_signal_up": { "type": "integer" },
-                        "sampled_analog_signal_up": { "type": "integer" },
+                        "is_signal_source": { "type": "boolean" },
+                        "has_analog_output_signal": { "type": "boolean" },
+                        "signal_values_sampled": { "const": false },
                         "context": { "type": "string" }
                       }
                     },
