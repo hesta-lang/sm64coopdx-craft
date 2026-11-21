@@ -1,42 +1,15 @@
-# SteveCraft — proxy-driven Steve (alpha)
+# SteveCraft 0.2.1-alpha — standalone visual validation
 
-SteveCraft is a standalone SM64CoopDX mod. It does not patch the Android APK
-or add native code to the game executable.
+SteveCraft is an independent Lua mod for SM64CoopDX. It does not modify or repackage the Android APK.
 
-## Player architecture
+## Current validation strategy
 
-- Place the supplied original DynOS binary at
-  `mods/stevecraft/actors/steve_geo.bin`, unchanged.
-- Its internal GeoLayout is named `mario_geo`; DynOS registers the custom actor
-  by the binary filename, `steve_geo`. Lua therefore requests
-  `smlua_model_util_get_id("steve_geo")`.
-- Lua assigns that model to the existing `m.marioObj` with
-  `obj_set_model_extended`. It does not spawn another Steve object or hide Mario.
-- The same Mario object remains the engine proxy for collision, actions, damage,
-  platforms and networking. SteveState retains authority over position and
-  velocity during ground/air physics steps, mirroring its transform to
-  MarioState and the same object.
-- SM64's action and animation timeline stays attached to that player object.
-  The binary uses a Mario-style GeoLayout hierarchy; its animation compatibility
-  still needs in-game validation.
+- The original binary is kept unchanged at `actors/minecraft_steve_geo.bin`.
+- Its internal GeoLayout symbol is `mario_geo`; Lua looks up that internal symbol through `smlua_model_util_get_id("mario_geo")`.
+- The model is assigned to the existing `m.marioObj`; no second player object is spawned.
+- This diagnostic build intentionally leaves Mario's native physics untouched. The experimental custom physics hook is disabled because it displaced the player proxy before the model was confirmed.
+- After the model is visible and its scale/origin are verified, Steve's independent movement controller can be reintroduced in isolated stages.
 
-## Binary-only asset pipeline
+## Important
 
-The actor directory is intentionally binary-only: `steve_geo.bin` is the sole
-file. The package no longer creates or includes actor source folders,
-`geo.inc.c`, `geo.h`, `geo_header.h`, `model.inc.c`, generated textures,
-or a Python model generator.
-
-The earlier `CUSTOM_CMD` errors are consistent with DynOS parsing the generated
-`geo.inc.c` source during pack generation. Removing those generated source
-folders and loading the supplied compiled binary directly avoids that source
-parser path; no commands are stripped from the binary.
-
-## Remaining validation
-
-- The Steve ground/air controller is experimental; water, ceilings, ladders,
-  knockback, riding and special movement still need in-game validation.
-- The actor's visual scale and Mario-animation compatibility need testing on
-  the Android build.
-- CI checks the binary signature, Lua syntax and package contents. It cannot
-  certify the in-game rendering result.
+CI verifies the DynOS binary signature, Lua syntax and ZIP contents only. A successful package does not prove that the Android runtime can parse or render the actor. The in-game log messages distinguish GeoLayout lookup failure from model assignment failure.
