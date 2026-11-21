@@ -13,6 +13,8 @@ on:
       - "mods/stevecraft/ENGINEERING_REVERSE_NOTES.md"
       - "tests/stevecraft_animation/**"
       - "tests/stevecraft_build_system/**"
+      - "mods/stevecraft/systems/**"
+      - "tools/stevecraft_assets/**"
       - "tools/stevecraft_rig_audit/**"
       - ".github/workflows/package-stevecraft-mod.yml"
   pull_request:
@@ -52,8 +54,16 @@ jobs:
           test -z "$EXTRA_FILES"
           echo "Precompiled actor present: $(wc -c < "$ACTOR") bytes"
 
+      - name: Extract official Minecraft Java HUD, block textures and sounds
+        run: |
+          python3 tools/stevecraft_assets/extract_official_assets.py \
+            --version 26.3 \
+            --output mods/stevecraft/assets
+
       - name: Validate Lua syntax
-        run: luac5.4 -p mods/stevecraft/main.lua
+        run: |
+          luac5.4 -p mods/stevecraft/main.lua
+          find mods/stevecraft/systems -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
 
       - name: Validate embedded actor import path and byte identity
         run: |
@@ -96,19 +106,19 @@ jobs:
       - name: Package standalone mod and engineering notes
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.1-alpha.zip" main.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.2-alpha.zip" main.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
 
       - name: Verify package contents
         run: |
-          unzip -t SteveCraft-0.4.1-alpha.zip
-          unzip -l SteveCraft-0.4.1-alpha.zip
-          unzip -p SteveCraft-0.4.1-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
-          unzip -p SteveCraft-0.4.1-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
+          unzip -t SteveCraft-0.4.2-alpha.zip
+          unzip -l SteveCraft-0.4.2-alpha.zip
+          unzip -p SteveCraft-0.4.2-alpha.zip actors/minecraft_steve_geo.bin | head -c 8 | grep -q DYNOSBIN
+          unzip -p SteveCraft-0.4.2-alpha.zip ENGINEERING_REVERSE_NOTES.md | grep -q "DynOS_Model_LoadGeo"
 
       - name: Upload standalone mod
         uses: actions/upload-artifact@v4
         with:
-          name: SteveCraft-0.4.1-alpha
-          path: SteveCraft-0.4.1-alpha.zip
+          name: SteveCraft-0.4.2-alpha
+          path: SteveCraft-0.4.2-alpha.zip
           if-no-files-found: error
           retention-days: 14
