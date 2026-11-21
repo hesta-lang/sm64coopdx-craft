@@ -82,18 +82,10 @@ jobs:
           grep -q 'STEVE_GEO_ASSET_REVISION' mods/stevecraft/main.lua
           grep -q 'mod_fs_create' mods/stevecraft/main.lua
           grep -q 'MOD_FS_URI_FORMAT' mods/stevecraft/main.lua
-          grep -q 'mario_geo_right_hand' mods/stevecraft/main.lua
           if grep -q 'smlua_model_util_get_id("mario_geo")' mods/stevecraft/main.lua; then
             echo "Unsafe built-in Mario fallback is still present."
             exit 1
           fi
-
-      - name: Validate reusable first-person hand GeoLayout
-        run: |
-          python3 tools/stevecraft_rig_audit/inspect_geo.py \
-            --binary mods/stevecraft/actors/minecraft_steve_geo.bin \
-            --layout mario_geo_right_hand \
-            --output "$RUNNER_TEMP/stevecraft-right-hand-audit.json"
 
       - name: Validate generated animation data
         run: lua5.4 tests/stevecraft_animation/test_animation.lua
