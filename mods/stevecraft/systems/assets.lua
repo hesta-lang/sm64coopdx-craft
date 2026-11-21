@@ -78,25 +78,28 @@ M.decode_base64 = decode_base64
 
 function M.install_embedded_resources(modfs, root)
     if not is_modfs(modfs) then return false, "missing ModFS" end
-    local first_error
-    local ok, manifest = pcall(require, "embedded_block_textures")
+
+    -- Prefer the exact packaged root file. Some Android mod loaders log a
+    -- missing-module error even when require() is protected by pcall.
+    local ok, manifest = false, nil
+    local root_path = type(root) == "string" and (root .. "embedded_block_textures.lua") or nil
+    if root_path ~= nil and type(dofile) == "function" then
+        ok, manifest = pcall(dofile, root_path)
+    end
+
+    -- Fallbacks for loaders that disable dofile or unpack modules differently.
+    local root_error = manifest
     if not ok or type(manifest) ~= "table" then
-        first_error = manifest
+        ok, manifest = pcall(require, "embedded_block_textures")
+    end
+    local first_error = manifest
+    if not ok or type(manifest) ~= "table" then
         ok, manifest = pcall(require, "systems/embedded_block_textures")
     end
     if not ok or type(manifest) ~= "table" then
-        local second_error = manifest
-        -- Some mobile mod-file loaders index files differently from desktop.
-        -- Load the root manifest by its exact mod directory as a final fallback.
-        if type(dofile) == "function" and type(root) == "string" then
-            local path = root .. "embedded_block_textures.lua"
-            ok, manifest = pcall(dofile, path)
-        end
-        if not ok or type(manifest) ~= "table" then
-            return false, "embedded resource manifest unavailable. root require: "
-                .. tostring(first_error) .. "; systems require: "
-                .. tostring(second_error) .. "; root file: " .. tostring(manifest)
-        end
+        return false, "embedded resource manifest unavailable. root file: "
+            .. tostring(root_error) .. "; root require: "
+            .. tostring(first_error) .. "; systems require: " .. tostring(manifest)
     end
 
     local installed, failures = 0, {}
