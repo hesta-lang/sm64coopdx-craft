@@ -11,10 +11,12 @@ assert(Sounds.is_mario_footstep_sound(0x042E0080), "quicksand step was not recog
 assert(Sounds.is_mario_footstep_sound(0x042F9080), "metal tiptoe step was not recognized")
 assert(Sounds.is_mario_footstep_sound(0x04529080), "metal water step was not recognized")
 
-assert(Sounds.filter_mario_footstep(0x06108080) == 0, "native step sound was not suppressed")
-assert(Sounds.filter_mario_footstep(0x04008080) == nil, "jump sound was incorrectly suppressed")
-assert(Sounds.filter_mario_footstep(0x14108080) == nil, "moving sound bank was incorrectly suppressed")
-assert(Sounds.filter_mario_footstep(0x14000000) == nil, "slide sound was incorrectly suppressed")
+assert(Sounds.filter_mario_sounds(0x06108080) == 0, "native step sound was not suppressed")
+assert(Sounds.filter_mario_sounds(0x04008080) == 0, "Mario jump/action sound was not suppressed")
+assert(Sounds.filter_mario_sounds(0x042A9080) == 0, "Mario acrobatic/action sound was not suppressed")
+assert(Sounds.filter_mario_sounds(0x50000000) == 0, "Mario voice bank was not suppressed")
+assert(Sounds.filter_mario_sounds(0x14108080) == nil, "non-action sound bank was incorrectly suppressed")
+assert(Sounds.filter_mario_sounds(0xB4000000) == nil, "environmental sound bank was incorrectly suppressed")
 
 local Blocks = require("blocks")
 assert(Blocks.get_footstep_material("minecraft:grass_block") == "grass")
