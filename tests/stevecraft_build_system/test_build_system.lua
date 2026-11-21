@@ -84,7 +84,7 @@ E_MODEL_BREAKABLE_BOX = 123
 OBJ_LIST_SURFACE = 9
 OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE = 1
 ACTIVE_FLAG_DEACTIVATED = 0x20
-A_BUTTON = 1 << 4
+X_BUTTON = 1 << 4
 B_BUTTON = 1 << 5
 L_TRIG = 1 << 6
 L_JPAD = 1 << 7
@@ -303,31 +303,31 @@ local function test_hotbar_and_input()
 
     -- Simulate duplicate A press callbacks in the same engine frame.
     gGlobalTimer = 300
-    m.controller.buttonDown = L_TRIG | A_BUTTON
-    m.controller.buttonPressed = A_BUTTON
+    m.controller.buttonDown = X_BUTTON
+    m.controller.buttonPressed = X_BUTTON
     build.handle_build_input(m)
     local after_first = state().block_count
     assert(build.is_place_button_latched(), "first A press was not latched")
 
     -- Repeat the touch press event on a later frame without releasing A.
     gGlobalTimer = 301
-    m.controller.buttonDown = L_TRIG | A_BUTTON
-    m.controller.buttonPressed = A_BUTTON
+    m.controller.buttonDown = X_BUTTON
+    m.controller.buttonPressed = X_BUTTON
     build.handle_build_input(m)
     assert(state().block_count == after_first,
         "repeated A event across held frames created another block")
     assert(build.is_place_button_latched(), "held A press unexpectedly cleared its latch")
 
     -- A real release rearms placement. The next tap targets the same occupied cell.
-    m.controller.buttonDown = L_TRIG
+    m.controller.buttonDown = 0
     m.controller.buttonPressed = 0
-    m.controller.buttonReleased = A_BUTTON
+    m.controller.buttonReleased = X_BUTTON
     build.handle_build_input(m)
     assert(not build.is_place_button_latched(), "A release did not rearm placement")
 
     gGlobalTimer = 302
-    m.controller.buttonDown = L_TRIG | A_BUTTON
-    m.controller.buttonPressed = A_BUTTON
+    m.controller.buttonDown = X_BUTTON
+    m.controller.buttonPressed = X_BUTTON
     m.controller.buttonReleased = 0
     build.handle_build_input(m)
     assert(build.is_place_button_latched(), "new A press did not latch")
@@ -343,26 +343,22 @@ local function test_hotbar_and_input()
 end
 
 local function test_per_area_persistence_and_chunk_limits()
-    -- New area must have a distinct grid, without deleting area 1 data.
+    -- Fill one area's grid and confirm its bounded chunks exist while active.
     gNetworkPlayers[0].currAreaIndex = 2
     assert(build.ensure_world_loaded() == true)
     assert(state().world_key == "1_1_2")
     assert(state().block_count == 0)
 
-    -- Populate area 2 beyond a single storage chunk while keeping the total below 128.
     local cell_count = 48
     for index = 0, cell_count - 1 do
         local slot = (index % 8) + 1
         build.select_inventory_slot(slot)
         local item = state().inventory[slot]
-        if item.count == 0 then
-            assert(build.inventory_add_block(item.id, 64))
-        end
+        if item.count == 0 then assert(build.inventory_add_block(item.id, 64)) end
         local ok, reason = build.place_grid_block(index, 0, 0)
         assert(ok == true, "bulk placement failed at " .. index .. ": " .. tostring(reason))
     end
     assert(state().block_count == cell_count)
-
     local prefix = "sc_world_1_1_2_chunk_"
     local chunk_count = 0
     for key, value in pairs(storage) do
@@ -371,31 +367,35 @@ local function test_per_area_persistence_and_chunk_limits()
             assert(#value <= build.constants.storage_chunk_size, "storage chunk exceeded safe mod-storage length")
         end
     end
-    assert(chunk_count > 1, "large grid was not split into multiple storage chunks")
+    assert(chunk_count > 1, "large active grid was not split into bounded storage chunks")
 
-    -- Changing areas deactivates previous objects and loads an independent empty grid.
-    local area2_block = find_cell(0, 0, 0)
-    local area2_object = area2_block.object
+    -- Changing area destroys all saved construction data, not just live objects.
+    local area2_object = find_cell(0, 0, 0).object
     gNetworkPlayers[0].currAreaIndex = 3
     assert(build.ensure_world_loaded() == true)
     assert(state().block_count == 0)
     assert(area2_object.activeFlags == ACTIVE_FLAG_DEACTIVATED)
+    for key in pairs(storage) do
+        assert(key:sub(1, 9) ~= "sc_world_", "old scene block data survived an area change")
+    end
 
-    -- Return to area 2: all persisted grid blocks are reconstructed.
+    -- Returning to a previous area must not resurrect its blocks.
     gNetworkPlayers[0].currAreaIndex = 2
     assert(build.ensure_world_loaded() == true)
-    assert(state().block_count == cell_count)
-    assert(find_cell(0, 0, 0).object ~= nil)
-
-    -- Returning to the original area also reloads its independent block state.
+    assert(state().block_count == 0)
     gNetworkPlayers[0].currAreaIndex = 1
     assert(build.ensure_world_loaded() == true)
     assert(state().world_key == "1_1_1")
-    -- Two explicit blocks plus one block placed by the hotbar-input test.
-    assert(state().block_count == 3)
-    assert(find_cell(1, 0, 0).id == "minecraft:bedrock")
-    assert(find_cell(2, 0, 0).id == "minecraft:stone")
-    print("PASS: per-area persistence, reload, cleanup, and bounded storage chunks")
+    assert(state().block_count == 0, "blocks from the previous scene were restored")
+
+    -- Explicit scene reset also removes all persisted world-grid keys.
+    assert(build.place_grid_block(10, 0, 0) == true)
+    build.reset_scene()
+    assert(state().block_count == 0)
+    for key in pairs(storage) do
+        assert(key:sub(1, 9) ~= "sc_world_", "scene reset left a saved block key")
+    end
+    print("PASS: scene changes and new game reset clear all prior blocks")
 end
 
 local function test_block_limit()
