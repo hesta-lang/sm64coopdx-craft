@@ -243,11 +243,12 @@ local function grid_key(x, y, z)
     return tostring(x) .. "," .. tostring(y) .. "," .. tostring(z)
 end
 
-local function is_occluding_cell(blocks, x, y, z)
+local function block_ao_brightness(blocks, x, y, z)
     local cell = blocks and blocks[grid_key(x, y, z)] or nil
-    if cell == nil then return false end
-    -- Glass is transparent in Minecraft and does not contribute to block AO.
-    return cell.id ~= "minecraft:glass"
+    if cell == nil or cell.id == "minecraft:glass" then
+        return 1.0 -- air and transparent blocks do not occlude AO
+    end
+    return 0.2 -- solid blocks (leaf-like opacity categories can be added later)
 end
 
 local function calculate_face_shading(blocks, x, y, z)
@@ -256,35 +257,33 @@ local function calculate_face_shading(blocks, x, y, z)
         local face_values = {}
         for corner_index, corner in ipairs(face.corners) do
             local su, sv = corner[1], corner[2]
-            local side_a = is_occluding_cell(
+            local facing = block_ao_brightness(
+                blocks,
+                x + face.n[1], y + face.n[2], z + face.n[3]
+            )
+            local side_a = block_ao_brightness(
                 blocks,
                 x + face.n[1] + face.u[1] * su,
                 y + face.n[2] + face.u[2] * su,
                 z + face.n[3] + face.u[3] * su
             )
-            local side_b = is_occluding_cell(
+            local side_b = block_ao_brightness(
                 blocks,
                 x + face.n[1] + face.v[1] * sv,
                 y + face.n[2] + face.v[2] * sv,
                 z + face.n[3] + face.v[3] * sv
             )
-            local diagonal = is_occluding_cell(
+            local corner_brightness = block_ao_brightness(
                 blocks,
                 x + face.n[1] + face.u[1] * su + face.v[1] * sv,
                 y + face.n[2] + face.u[2] * su + face.v[2] * sv,
                 z + face.n[3] + face.u[3] * su + face.v[3] * sv
             )
 
-            local ao
-            if side_a and side_b then
-                ao = 0.55
-            else
-                local occupied = (side_a and 1 or 0)
-                    + (side_b and 1 or 0)
-                    + (diagonal and 1 or 0)
-                ao = 1.0 - occupied * 0.15
-            end
-            face_values[corner_index] = face.directional * ao
+            -- Minecraft's documented traditional AO approximation averages
+            -- the facing, two side and diagonal/corner block samples per vertex.
+            local ao_light = (facing + side_a + side_b + corner_brightness) * 0.25
+            face_values[corner_index] = face.directional * ao_light
         end
         result[face_index] = face_values
     end
