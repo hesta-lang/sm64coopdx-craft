@@ -1,9 +1,9 @@
-# SteveCraft 0.4.3-alpha — Steve proxy, first-person prototype, and voxel build system
+# SteveCraft 0.4.4-alpha — dynamic voxel display-list prototype
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
 
-## Native C engine bridge (0.4.3-alpha)
+## Native C engine bridge (0.4.4-alpha)
 
 This release keeps SteveCraft as an independent mod ZIP. It does not ship a
 custom `.so`, modify the SM64CoopDX executable, or require a rebuilt APK.
@@ -101,9 +101,16 @@ dynamic surface objects that load collision through
 
 ### Current block limitations
 
-- All nine starter block IDs still use the vanilla breakable-box display model
-  and full-cube collision mesh. They do not yet render the corresponding
-  Minecraft Java voxel model or texture.
+- The nine starter block types now receive Lua-generated 24-vertex cube
+  display lists with the official Java 26.3 block textures. The renderer
+  swaps the existing breakable-box GeoLayout display-list pointer per object;
+  it does not add a new compiled actor or modify the APK.
+- This is an isolated renderer prototype, not a chunk mesher: each block still
+  draws six faces, even when faces are hidden against neighboring blocks.
+  The current full-cube breakable-box collision mesh is unchanged.
+- Block PNGs and available OGG samples are embedded by GitHub Actions as a
+  Lua Base64 manifest, then written to ModFS through the game's own API. This
+  avoids depending on production Lua builds exposing `io.open`.
 - The catalogue includes Java 26.3 destroy speed, explosion resistance,
   friction, and sound-event IDs. Mining time uses a simple prototype scaling
   based on destroy speed; tool tiers and Java's complete breaking-speed
@@ -125,9 +132,9 @@ that. The correct next step is to extract the hand mesh subtree from the
 existing actor binary or add a compatible actor asset that actually contains
 a standalone hand layout.
 
-Runtime skin replacement is also not implemented. A PNG alone cannot replace
-textures already referenced by a compiled display list; the model needs a
-verified dynamic texture-binding path before arbitrary custom skins can work.
+Runtime replacement of Steve's player skin is still not implemented. The
+voxel renderer's texture binding only covers the nine construction block
+models, not the player actor's compiled materials.
 
 ## Multiplayer and persistence boundary
 
@@ -140,6 +147,9 @@ it is not a server-authoritative world database shared across installations.
 GitHub Actions checks:
 
 - Lua syntax and generated animation data.
+- Runtime Gfx/Vtx mesh construction, per-object GeoLayout pointer swapping,
+  glass transparency layer selection, and restoration of the vanilla model.
+- Binary resource embedding and Base64 decoding for production ModFS import.
 - Embedded DYNOSBIN byte count/header and ModFS import/URI resolution using a
   mocked ModFS API.
 - Grid coordinate math, inventory accounting, placement/removal, dynamic

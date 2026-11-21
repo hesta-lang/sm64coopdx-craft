@@ -3,7 +3,7 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.3-alpha"
+local STEVECRAFT_VERSION = "0.4.4-alpha"
 
 -- Resolve modules relative to this mod instead of depending on the host's
 -- current working directory or a globally configured Lua package.path.
@@ -42,6 +42,7 @@ end
 
 -- Gameplay modules are siblings of main.lua; engine and asset adapters live in systems/.
 local Assets = stevecraft_load_module("systems/assets", "systems/assets")
+local VoxelRenderer = stevecraft_load_module("systems/voxel_renderer", "systems/voxel_renderer")
 local Native = stevecraft_load_module("systems/native_engine", "systems/native_engine")
 local Blocks = stevecraft_load_module("blocks", "blocks")
 local Sounds = stevecraft_load_module("sounds", "sounds")
@@ -308,9 +309,14 @@ local function grid_block_init(obj)
     if type(obj_scale) == "function" then
         obj_scale(obj, GRID_OBJECT_SCALE)
     end
+    local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
+    if block_id then VoxelRenderer.attach(obj, block_id) end
 end
 
 local function grid_block_loop(obj)
+    local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
+    if block_id then VoxelRenderer.attach(obj, block_id) end
+
     if obj.collisionData ~= nil and type(load_object_collision_model) == "function" then
         load_object_collision_model()
     end
@@ -353,6 +359,7 @@ local function spawn_grid_block(block_id, x, y, z)
     local function initialize(obj)
         obj.oBehParams2ndByte = definition.index
         obj.oAnimState = 0
+        VoxelRenderer.attach(obj, block_id)
     end
 
     local object, reason = Blocks.spawn_once(
@@ -826,6 +833,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         hud = HUD,
         model = Model,
         native_engine = Native,
+        voxel_renderer = VoxelRenderer,
     }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = Camera.ensure,
@@ -869,6 +877,8 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
 end
 
 Assets.import_all(STEVECRAFT_MOD_DIR)
+VoxelRenderer.configure(Assets.get_block_textures())
+VoxelRenderer.install_hooks()
 Sounds.load()
 
 -- Native Mario movement is retained. The invisible per-area grid creates real surface objects.

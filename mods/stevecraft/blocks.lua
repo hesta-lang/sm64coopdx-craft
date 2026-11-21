@@ -71,6 +71,15 @@ Blocks.catalog = {
     },
 }
 
+local index_to_id = {}
+for block_id, definition in pairs(Blocks.catalog) do
+    index_to_id[definition.index] = block_id
+end
+
+function Blocks.get_id_from_index(index)
+    return index_to_id[index]
+end
+
 Blocks.texture_tiles = {
     ["minecraft:stone"] = { 0, 0 },
     ["minecraft:dirt"] = { 16, 0 },
