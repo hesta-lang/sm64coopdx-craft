@@ -109,6 +109,8 @@ jobs:
               raise SystemExit("No blockstate resources were extracted.")
           if coverage["block_model_resource_count"] <= 0:
               raise SystemExit("No block models were resolved.")
+          if coverage["sound_event_count"] <= 0:
+              raise SystemExit("No sound events were loaded from the version asset index.")
           if coverage["registry_complete"] is not False:
               raise SystemExit("The resource-only extractor must not claim registry completeness.")
           for block in document["blocks"]:
