@@ -60,6 +60,7 @@ class BlockDataExtractorTests(unittest.TestCase):
             self.assertIn("minecraft:mineable/pickaxe", result["block_tags"])
             self.assertEqual(result["recipes"][0]["result_id"], "minecraft:stone")
             self.assertIn("minecraft:block.stone.hit", [entry["id"] for entry in result["sound_events"]])
+            self.assertIn("minecraft:entity.player.levelup", [entry["id"] for entry in result["sound_events"]])
             self.assertTrue(output.is_file())
 
     def test_empty_jar_has_explicitly_incomplete_coverage(self):
