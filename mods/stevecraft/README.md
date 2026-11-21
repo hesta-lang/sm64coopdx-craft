@@ -1,19 +1,26 @@
-# SteveCraft 0.2.2-alpha — Bedrock-inspired controller prototype
+# SteveCraft 0.2.3-alpha — source-verified model assignment
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It does not modify or repackage the Android APK.
 
-## What this build contains
+## Current implementation
 
-- Keeps the original DynOS actor unchanged at actors/minecraft_steve_geo.bin.
-- Resolves the actor's internal GeoLayout symbol as mario_geo.
-- Applies the extended model to the existing m.marioObj; it never spawns a second player object.
-- Adds a first Lua adaptation of Bedrock's public animation-controller pattern. It observes the local player's action and selects idle, move, jump, fall, or swim states.
-- Logs only state transitions, not every frame.
+- Preserves the original DynOS actor at `actors/minecraft_steve_geo.bin` without modifying or regenerating it.
+- Resolves its internal GeoLayout symbol as `mario_geo` through `smlua_model_util_get_id()`.
+- Assigns the resulting extended-model ID to the existing local player's `m.marioObj` with `obj_set_model_extended()`.
+- Reads the model back with `obj_get_model_id_extended()` to verify the assignment against the engine's actual graph-node model ID.
+- Keeps Mario's native movement, gravity, collision, camera, and multiplayer proxy behavior unchanged.
+- Retains the Bedrock-inspired observational state controller (`idle`, `move`, `jump`, `fall`, `swim`).
 
-## Important limitations
+## Reverse-engineering findings
 
-This is a state-controller prototype, not Bedrock's original player code. Bedrock's internal player physics and camera implementation are proprietary and are not included in bedrock-samples. The public samples document entity components and animation-controller patterns that can be independently recreated.
+Bedrock's public player model is data-driven, not a C++ function we can transplant: `player.entity.json` binds the player identifier to a texture, geometry, scale, animation aliases, and render controllers. `humanoid.custom.geo.json` describes the bone hierarchy and cuboids; animation and render-controller JSON define transforms and visibility.
 
-This build does not alter Mario's movement, gravity, collision, input, camera, or animation playback. Native SM64CoopDX physics remain enabled while DynOS compatibility and model rendering are validated. The controller states are groundwork for later Steve-specific animation and movement stages.
+SM64CoopDX's C/C++ source shows the corresponding native path: DynOS registers a `.geo.bin` actor and its GeoLayout; `smlua_model_util_get_id()` resolves that GeoLayout and returns an extended ID; `obj_set_model_extended()` loads it into DynOS's session model pool and assigns it to an existing object. SteveCraft now verifies the result using `obj_get_model_id_extended()`.
 
-CI validates Lua syntax, the DynOS binary signature, and ZIP contents. A successful package does not prove that the Android runtime can parse or render the actor.
+See `ENGINEERING_REVERSE_NOTES.md` for the source files, call flow, format differences, and the next rig-inspection step.
+
+## Current limits
+
+This is not Bedrock's proprietary renderer or player implementation. The public samples reveal the resource/animation definitions, not the internal Bedrock C++ engine. Also, Bedrock's humanoid bone rig is not automatically compatible with the Mario-style DynOS GeoLayout in the current binary. We must inspect and map the actual graph-node hierarchy before writing bone animation code.
+
+CI validates Lua syntax, the DynOS binary signature, and ZIP contents. A successful package does not prove Android runtime rendering or animation compatibility.
