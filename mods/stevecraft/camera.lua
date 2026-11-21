@@ -2,12 +2,13 @@
 -- The view itself is provided by SM64CoopDX's native first-person camera.
 
 local Camera = {}
+local Native = require("systems/native_engine")
 local initialized = false
 local warning_shown = false
 local last_health = nil
 
 function Camera.ensure(mario)
-    if type(set_first_person_enabled) ~= "function" then
+    if not Native.first_person_api_available() then
         if not warning_shown then
             print("[SteveCraft] WARNING: first-person camera APIs are unavailable in this build.")
             warning_shown = true
@@ -15,12 +16,10 @@ function Camera.ensure(mario)
         return false
     end
 
-    local camera = gFirstPersonCamera
+    local camera = Native.get_first_person_camera()
     if not initialized then
-        if type(first_person_reset) == "function" then
-            pcall(first_person_reset)
-        end
-        camera = gFirstPersonCamera
+        Native.reset_first_person()
+        camera = Native.get_first_person_camera()
         if camera ~= nil then
             local facing = mario and mario.faceAngle and mario.faceAngle.y or 0
             camera.yaw = facing + 0x8000
@@ -31,46 +30,42 @@ function Camera.ensure(mario)
             camera.forceRoll = true
             camera.fov = 70
         end
-        local ok, err = pcall(set_first_person_enabled, true)
+        local ok, err = Native.set_first_person_enabled(true)
         if not ok then
             print("[SteveCraft] ERROR: couldn't enable first-person camera: " .. tostring(err))
             return false
         end
         initialized = true
-        print("[SteveCraft] SM64CoopDX first-person camera enabled.")
+        print("[SteveCraft] SM64CoopDX native first-person camera enabled.")
     elseif camera ~= nil then
         camera.centerL = false
         if camera.enabled ~= true then
-            pcall(set_first_person_enabled, true)
+            Native.set_first_person_enabled(true)
         end
     end
     return true
 end
 
 function Camera.is_active()
-    if type(get_first_person_enabled) == "function" then
-        local ok, enabled = pcall(get_first_person_enabled)
-        return ok and enabled == true
-    end
-    return gFirstPersonCamera ~= nil and gFirstPersonCamera.enabled == true
+    return Native.is_first_person_enabled()
 end
 
 function Camera.get_ray(mario)
-    local camera = gFirstPersonCamera
+    local camera = Native.get_first_person_camera()
     if camera == nil or type(camera.yaw) ~= "number" or type(camera.pitch) ~= "number" then
         return nil
     end
 
-    local origin = gLakituState and gLakituState.pos or nil
+    local origin = Native.get_lakitu_position()
     if origin == nil then
         if mario == nil or mario.pos == nil then return nil end
         origin = { x = mario.pos.x, y = (mario.pos.y or 0) + 120, z = mario.pos.z }
     end
 
-    local yaw_sin = type(sins) == "function" and sins(camera.yaw) or math.sin(camera.yaw * math.pi / 32768)
-    local yaw_cos = type(coss) == "function" and coss(camera.yaw) or math.cos(camera.yaw * math.pi / 32768)
-    local pitch_sin = type(sins) == "function" and sins(camera.pitch) or math.sin(camera.pitch * math.pi / 32768)
-    local pitch_cos = type(coss) == "function" and coss(camera.pitch) or math.cos(camera.pitch * math.pi / 32768)
+    local yaw_sin = Native.sins(camera.yaw)
+    local yaw_cos = Native.coss(camera.yaw)
+    local pitch_sin = Native.sins(camera.pitch)
+    local pitch_cos = Native.coss(camera.pitch)
 
     return origin, {
         x = -pitch_cos * yaw_sin,
@@ -137,17 +132,14 @@ function Camera.trace_voxel_ray(origin, direction, max_distance, blocks, cell_si
 end
 
 function Camera.get_world_surface_hit(origin, direction, reach)
-    if type(collision_find_surface_on_ray) ~= "function" or origin == nil or direction == nil then
-        return nil
-    end
+    if origin == nil or direction == nil then return nil end
     reach = reach or 540
-    local ok, result = pcall(
-        collision_find_surface_on_ray,
+    local result = Native.find_surface_on_ray(
         origin.x, origin.y, origin.z,
         direction.x * reach, direction.y * reach, direction.z * reach,
         2.0
     )
-    if not ok or result == nil or result.surface == nil or result.hitPos == nil then return nil end
+    if result == nil or result.surface == nil or result.hitPos == nil then return nil end
     return result
 end
 
