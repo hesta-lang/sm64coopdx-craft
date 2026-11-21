@@ -3,7 +3,7 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.6-alpha"
+local STEVECRAFT_VERSION = "0.4.7-alpha"
 
 -- Resolve modules relative to this mod instead of depending on the host's
 -- current working directory or a globally configured Lua package.path.
@@ -312,7 +312,7 @@ local function grid_block_init(obj)
     end
     GridTransform.apply(obj, GRID_CELL_SIZE)
     local block_id = Blocks.get_id_from_index(obj.oBehParams2ndByte)
-    if block_id then VoxelRenderer.attach(obj, block_id) end
+    if block_id then VoxelRenderer.attach(obj, block_id, sWorldBlocks) end
 end
 
 local function grid_block_loop(obj)
@@ -365,7 +365,7 @@ local function spawn_grid_block(block_id, x, y, z)
         obj.oBehParams2ndByte = definition.index
         obj.oAnimState = 0
         GridTransform.apply(obj, GRID_CELL_SIZE)
-        VoxelRenderer.attach(obj, block_id)
+        VoxelRenderer.attach(obj, block_id, sWorldBlocks)
     end
 
     local object, reason = Blocks.spawn_once(
