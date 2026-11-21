@@ -136,6 +136,8 @@ assert(stone_mesh.vtx.vertices[1].r == 204, "front side directional shade incorr
 assert(stone_mesh.vtx.vertices[9].r == 255, "top face directional shade incorrect")
 assert(stone_mesh.vtx.vertices[13].r == 128, "bottom face directional shade incorrect")
 local open_shading = Renderer.compute_face_shading({}, 0, 0, 0)
+local open_faces = Renderer.compute_visible_faces({}, 0, 0, 0)
+assert(#open_faces == 6, "isolated cube should expose six faces")
 assert(open_shading[1][1] > 0.79 and open_shading[1][1] < 0.81,
     "front face direction factor incorrect")
 assert(open_shading[3][1] == 1.0, "top face should be brightest")
@@ -157,6 +159,29 @@ local glass_shading = Renderer.compute_face_shading({
 }, 0, 0, 0)
 assert(glass_shading[1][4] == open_shading[1][4],
     "transparent glass should not darken ambient-occlusion corners")
+
+-- One adjacent block hides exactly the common face; all remaining faces stay.
+local one_neighbour = { ["0,0,1"] = { id = "minecraft:stone" } }
+local culled_faces = Renderer.compute_visible_faces(one_neighbour, 0, 0, 0)
+assert(#culled_faces == 5, "shared face was not removed from the exposed-face list")
+assert(culled_faces[1].shading_index ~= 1, "front face remained visible against a neighbour")
+assert(Renderer.attach(stone, "minecraft:stone", one_neighbour),
+    "mesh could not be rebuilt for a local block edit")
+stone_mesh = Renderer.get_mesh("minecraft:stone")
+assert(stone_mesh.face_count == 5 and stone_mesh.vertex_count == 20,
+    "face-culling did not reduce a cube to five faces / 20 vertices")
+
+-- An enclosed full cube is collision-only and owns an empty display list.
+local enclosed = {
+    ["0,0,1"] = { id = "minecraft:stone" },
+    ["0,0,-1"] = { id = "minecraft:stone" },
+    ["0,1,0"] = { id = "minecraft:stone" },
+    ["0,-1,0"] = { id = "minecraft:stone" },
+    ["1,0,0"] = { id = "minecraft:stone" },
+    ["-1,0,0"] = { id = "minecraft:stone" },
+}
+assert(#Renderer.compute_visible_faces(enclosed, 0, 0, 0) == 0,
+    "fully enclosed block must not emit any render faces")
 local point_filter_found = false
 for _, entry in ipairs(stone_mesh.gfx.buffer.commands) do
     if entry.command == "gsDPSetTextureFilter(G_TF_POINT)" then point_filter_found = true end
@@ -180,4 +205,4 @@ local counts = Renderer.debug_counts()
 assert(counts.meshes == 2 and counts.display_nodes == 1 and counts.objects == 2,
     "renderer resource registry counts are inconsistent")
 
-print("PASS: per-material voxel Gfx/Vtx generation, per-object GeoLayout swapping, glass layer, and vanilla fallback")
+print("PASS: per-object display lists, AO, per-face culling, empty enclosed blocks, glass layer and vanilla fallback")
