@@ -560,4 +560,26 @@ end
 
 test_separated_modules_and_audio()
 test_model_asset_registration()
+
+local systems = __STEVECRAFT_TEST.systems
+assert(type(systems) == "table", "subsystem modules were not loaded")
+assert(type(systems.blocks.new_placement_guard) == "function", "blocks.lua was not loaded")
+assert(type(systems.physics.ground_drag) == "function", "physics.lua was not loaded")
+assert(type(systems.camera.forward) == "function", "camera.lua was not loaded")
+assert(type(systems.hud.layout) == "function", "hud.lua was not loaded")
+assert(type(systems.sounds.register) == "function", "sounds.lua was not loaded")
+assert(type(systems.models.modfs_uri) == "function", "models.lua was not loaded")
+local guard = systems.blocks.new_placement_guard()
+assert(guard(10, 1, 2, 3) == true, "first placement in a frame should pass")
+local allowed, why = guard(10, 1, 2, 3)
+assert(allowed == false and why == "duplicate_same_frame", "second same-cell placement in one frame should be blocked")
+assert(guard(10, 1, 2, 4) == true, "different cells must remain placeable in the same frame")
+assert(guard(11, 1, 2, 3) == true, "same cell can be placed on a later frame after removal")
+local layout = systems.hud.layout(320, 180)
+assert(layout.hotbar.x == 69 and layout.hotbar.y == 158, "Java hotbar position must be bottom-centered")
+assert(systems.physics.ground_drag(0.6) > 0.54 and systems.physics.ground_drag(0.6) < 0.55)
+local forward = systems.camera.forward(0, 0)
+assert(math.abs(forward.z + 1) < 0.0001, "camera ray direction should match SM64 first-person camera")
+print("PASS: modular subsystem loading, anti-duplicate guard, camera, HUD layout and physics helpers")
+
 print("SteveCraft build-system validation passed.")
