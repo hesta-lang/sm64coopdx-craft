@@ -2,10 +2,15 @@
 local M = {}
 local active_modfs = nil
 
+local function is_modfs(value)
+    local value_type = type(value)
+    if value_type ~= "table" and value_type ~= "userdata" then return false end
+    local ok, path = pcall(function() return value.modPath end)
+    return ok and type(path) == "string" and path ~= ""
+end
+
 local function resolve_modfs()
-    if active_modfs ~= nil and type(active_modfs.modPath) == "string" then
-        return active_modfs
-    end
+    if is_modfs(active_modfs) then return active_modfs end
     if type(mod_fs_get) ~= "function" then
         return nil, "SM64CoopDX ModFS API is unavailable"
     end
@@ -13,8 +18,7 @@ local function resolve_modfs()
     if ok and modfs == nil and type(mod_fs_create) == "function" then
         ok, modfs = pcall(mod_fs_create)
     end
-    if not ok or type(modfs) ~= "table"
-        or type(modfs.modPath) ~= "string" or modfs.modPath == "" then
+    if not ok or not is_modfs(modfs) then
         return nil, "could not obtain the active mod filesystem"
     end
     active_modfs = modfs
@@ -73,7 +77,7 @@ end
 M.decode_base64 = decode_base64
 
 function M.install_embedded_resources(modfs)
-    if type(modfs) ~= "table" then return false, "missing ModFS" end
+    if not is_modfs(modfs) then return false, "missing ModFS" end
     local ok, manifest = pcall(require, "embedded_block_textures")
     if not ok or type(manifest) ~= "table" then
         local first_error = manifest
@@ -253,7 +257,7 @@ local function file_bytes(path)
 end
 
 function M.install(root, modfs)
-    if type(root) ~= "string" or type(modfs) ~= "table" then
+    if type(root) ~= "string" or not is_modfs(modfs) then
         return false, "missing mod root or ModFS"
     end
     active_modfs = modfs
@@ -298,7 +302,7 @@ function M.install(root, modfs)
 end
 
 function M.load_textures(modfs, texture_getter, uri_format)
-    if type(texture_getter) ~= "function" or type(modfs) ~= "table" then return {} end
+    if type(texture_getter) ~= "function" or not is_modfs(modfs) then return {} end
     local map = {}
     local paths = {
         hotbar = "textures/gui/sprites/hud/hotbar.png",
