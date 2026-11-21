@@ -539,7 +539,7 @@ local function test_separated_modules_and_audio()
     for _, uri in ipairs(expected_samples) do
         assert(audio_samples[uri] ~= nil, "missing imported Java sound: " .. uri)
     end
-    local assets = require("systems.assets")
+    local assets = require("systems/assets")
     assert(assets.get_uri("sounds/stone_step.ogg")
         == "modfs:/stevecraft/assets/sounds/stone_step.ogg",
         "asset URI did not resolve through the active ModFS")
