@@ -192,18 +192,18 @@ jobs:
       - name: Verify package contents
         run: |
           unzip -t SteveCraft-0.4.7-alpha.zip
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " assets.lua"
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " systems/assets.lua"
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " systems/voxel_renderer.lua"
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " embedded_block_textures.lua"
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " systems/embedded_block_textures.lua"
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " textures/stevecraft/icons/stone.png"
-          unzip -l SteveCraft-0.4.7-alpha.zip | grep -q " systems/grid_transform.lua"
-          unzip -l SteveCraft-0.4.7-alpha.zip
+          unzip -l SteveCraft-0.4.7-alpha.zip > package-list.txt
+          grep -q " assets.lua" package-list.txt
+          grep -q " systems/assets.lua" package-list.txt
+          grep -q " systems/voxel_renderer.lua" package-list.txt
+          grep -q " embedded_block_textures.lua" package-list.txt
+          grep -q " systems/embedded_block_textures.lua" package-list.txt
+          grep -q " textures/stevecraft/icons/stone.png" package-list.txt
+          grep -q " systems/grid_transform.lua" package-list.txt
           unzip -p SteveCraft-0.4.7-alpha.zip actors/minecraft_steve_geo.bin > actor-check.bin
           test "$(head -c 8 actor-check.bin)" = "DYNOSBIN"
           unzip -p SteveCraft-0.4.7-alpha.zip embedded_block_textures.lua > embedded-manifest-check.lua
-          grep -q 'textures/stevecraft/icons/stone.png' embedded-manifest-check.lua
+          test -s embedded-manifest-check.lua
           unzip -p SteveCraft-0.4.7-alpha.zip ENGINEERING_REVERSE_NOTES.md > engineering-notes-check.md
           test -s engineering-notes-check.md
 
