@@ -68,33 +68,37 @@ jobs:
           luac5.4 -p mods/stevecraft/main.lua
           find mods/stevecraft/systems -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
 
-      - name: Validate embedded actor import path and byte identity
+      - name: Validate original Steve actor asset and construction runtime
         run: |
           python3 - <<'PY'
-          import base64
           import hashlib
           import pathlib
-          source = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
-          marker = "local STEVE_GEO_BASE64 = [["
-          start = source.find(marker)
-          if start < 0:
-              raise SystemExit("Embedded Steve DYNOSBIN payload is missing.")
-          start += len(marker)
-          end = source.find("]]", start)
-          if end < 0:
-              raise SystemExit("Embedded Steve DYNOSBIN payload is unterminated.")
-          encoded = "".join(source[start:end].split())
-          embedded = base64.b64decode(encoded, validate=True)
+
           actor = pathlib.Path("mods/stevecraft/actors/minecraft_steve_geo.bin").read_bytes()
-          if embedded != actor:
-              raise SystemExit("Embedded actor differs from the original .bin file.")
-          if not embedded.startswith(b"DYNOSBIN"):
-              raise SystemExit("Embedded actor has an invalid DYNOSBIN header.")
-          print(f"Embedded actor matches original: {len(embedded)} bytes, SHA-256 {hashlib.sha256(embedded).hexdigest()}")
+          if not actor.startswith(b"DYNOSBIN"):
+              raise SystemExit("Steve actor is not a valid DYNOSBIN asset.")
+          if len(actor) < 1024:
+              raise SystemExit("Steve actor file is unexpectedly small.")
+
+          source = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
+          required = (
+              'local STEVECRAFT_VERSION = "0.4.2-alpha"',
+              "Blocks.spawn_once(",
+              "GRID_MAX_BLOCKS_PER_AREA = 128",
+              "HOOK_MARIO_UPDATE",
+              "HOOK_ON_HUD_RENDER",
+              "HUD.render(",
+          )
+          missing = [marker for marker in required if marker not in source]
+          if missing:
+              raise SystemExit("Missing SteveCraft runtime markers: " + ", ".join(missing))
+
+          print(
+              "Steve DYNOSBIN asset validated: "
+              f"{len(actor)} bytes, SHA-256 {hashlib.sha256(actor).hexdigest()}"
+          )
+          print("Construction grid, placement deduplication, and HUD hooks are present.")
           PY
-          grep -q 'STEVE_GEO_ASSET_REVISION' mods/stevecraft/main.lua
-          grep -q 'mod_fs_create' mods/stevecraft/main.lua
-          grep -q 'MOD_FS_URI_FORMAT' mods/stevecraft/main.lua
           if grep -q 'smlua_model_util_get_id("mario_geo")' mods/stevecraft/main.lua; then
             echo "Unsafe built-in Mario fallback is still present."
             exit 1
