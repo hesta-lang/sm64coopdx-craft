@@ -29,8 +29,8 @@ jobs:
           ACTOR="mods/stevecraft/actors/steve_geo.bin"
           test -s "$ACTOR"
           test "$(head -c 8 "$ACTOR")" = "DYNOSBIN"
-          test "$(find mods/stevecraft/actors -type f | wc -l)" -eq 1
-          test -z "$(find mods/stevecraft/actors -type f ! -name 'steve_geo.bin' -print)"
+          EXTRA_FILES="$(find mods/stevecraft/actors -type f ! -name 'steve_geo.bin' ! -name 'README.md' -print)"
+          test -z "$EXTRA_FILES"
           echo "Precompiled actor present: $(wc -c < "$ACTOR") bytes"
 
       - name: Validate Lua syntax
