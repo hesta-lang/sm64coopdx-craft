@@ -4,6 +4,7 @@ local hooks = {}
 local behavior = nil
 local collision_calls = 0
 local hud_lines = {}
+local hud_rect_calls = 0
 
 local function copy(source)
     local result = {}
@@ -28,6 +29,7 @@ R_JPAD = 1 << 8
 U_JPAD = 1 << 9
 D_JPAD = 1 << 10
 RESOLUTION_N64 = 1
+RESOLUTION_DJUI = 2
 FONT_NORMAL = 1
 
 gNetworkPlayers = {
@@ -99,6 +101,11 @@ function djui_hud_set_resolution() end
 function djui_hud_set_font() end
 function djui_hud_set_color() end
 function djui_hud_measure_text(value) return #value * 8 end
+function djui_hud_get_screen_width() return 640 end
+function djui_hud_get_screen_height() return 360 end
+function djui_hud_render_rect()
+    hud_rect_calls = hud_rect_calls + 1
+end
 function djui_hud_print_text(value)
     hud_lines[#hud_lines + 1] = value
 end
@@ -336,4 +343,67 @@ test_bedrock_and_full_inventory()
 test_hotbar_and_input()
 test_per_area_persistence_and_chunk_limits()
 test_block_limit()
+
+local function test_first_person_camera_and_voxel_ray()
+    local camera = __STEVECRAFT_TEST.camera
+    assert(type(camera) == "table", "camera system export missing")
+
+    local hit_x, hit_y, hit_z, previous_x, previous_y, previous_z = camera.trace_voxel_ray(
+        { x = 45, y = 45, z = 45 },
+        { x = 0, y = 0, z = 1 },
+        450,
+        { ["0,0,2"] = { id = "minecraft:stone" } }
+    )
+    assert(hit_x == 0 and hit_y == 0 and hit_z == 2, "voxel DDA missed the target block")
+    assert(previous_x == 0 and previous_y == 0 and previous_z == 1, "voxel DDA did not return the placement-adjacent cell")
+
+    assert(camera.health_to_half_hearts(0x0880) == 20, "full Mario health did not map to 20 half-hearts")
+    assert(camera.health_to_half_hearts(0x00FF) == 0, "minimum Mario health did not map to zero half-hearts")
+    assert(camera.health_to_half_hearts(0x0880 + 100) == 20, "health mapping did not clamp at maximum")
+
+    assert(camera.mining_frames_for_hardness(1.5) == 68, "stone hardness mining time is incorrect")
+    assert(camera.mining_frames_for_hardness(0.5) == 23, "dirt hardness mining time is incorrect")
+    assert(camera.mining_frames_for_hardness(-1) == nil, "bedrock must not receive a mining duration")
+
+    gFirstPersonCamera = {
+        enabled = false,
+        yaw = 0,
+        pitch = 0,
+        centerL = true,
+        forcePitch = true,
+        forceYaw = true,
+        forceRoll = false,
+        fov = 70,
+    }
+    gLakituState = { pos = { x = 10, y = 110, z = 20 } }
+    function first_person_reset()
+        gFirstPersonCamera.pitch = 0
+        gFirstPersonCamera.yaw = 0
+    end
+    function set_first_person_enabled(enabled)
+        gFirstPersonCamera.enabled = enabled
+    end
+    function get_first_person_enabled()
+        return gFirstPersonCamera.enabled
+    end
+
+    local enabled = camera.ensure_first_person_camera({ faceAngle = { y = 0 } })
+    assert(enabled == true and gFirstPersonCamera.enabled == true, "first-person camera did not enable")
+    assert(gFirstPersonCamera.yaw == 0x8000, "camera did not initialize to Mario's forward direction")
+    assert(gFirstPersonCamera.centerL == false, "build modifier L still recenters the camera")
+    assert(gFirstPersonCamera.forcePitch == false and gFirstPersonCamera.forceYaw == false,
+        "first-person camera input was locked")
+
+    local origin, direction = camera.get_camera_ray({ pos = { x = 0, y = 0, z = 0 } })
+    assert(origin.x == 10 and origin.y == 110 and origin.z == 20, "camera ray did not use Lakitu's camera position")
+    assert(math.abs(direction.z - 1) < 0.0001, "camera ray direction does not match the first-person view")
+
+    build.render_inventory()
+    assert(hud_rect_calls > 20, "first-person crosshair and pixel HUD did not render rectangles")
+    gFirstPersonCamera = nil
+    gLakituState = nil
+    print("PASS: first-person setup, center-camera ray, voxel DDA, hearts, damage mapping, and hardness timing")
+end
+
+test_first_person_camera_and_voxel_ray()
 print("SteveCraft build-system validation passed.")
