@@ -50,7 +50,15 @@ function audio_sample_load(uri)
         loaded_samples[uri] = pending_dirt_sample
         return pending_dirt_sample
     end
-    local sample = { filepath = uri, loaded = true }
+    local sample = setmetatable({ filepath = uri, loaded = true }, {
+        __newindex = function(target, key, value)
+            if key == "channel" then
+                forbidden_channel_assignments = forbidden_channel_assignments + 1
+                error("sample.channel is a stream-only property")
+            end
+            rawset(target, key, value)
+        end,
+    })
     loaded_samples[uri] = sample
     return sample
 end
