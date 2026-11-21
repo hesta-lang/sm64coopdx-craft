@@ -757,6 +757,7 @@ local function ensure_world_loaded()
     ensure_inventory_loaded()
     local world_key, world_prefix = get_world_context()
     if not world_key then return false end
+    load_destroyed_terrain(world_key)
     if sCurrentWorldKey == world_key then return true end
 
     if sCurrentWorldKey ~= nil then
@@ -917,51 +918,144 @@ local function mining_frames_for_hardness(hardness)
     return math.max(1, math.ceil(hardness * MINING_FRAMES_PER_HARDNESS))
 end
 
+
+local function reset_mining_target()
+    sMiningCellKey = nil
+    sMiningFrames = 0
+    sMiningRequiredFrames = 0
+    sMiningTargetKind = nil
+    sMiningSurfaceKey = nil
+end
+
+local function get_terrain_mining_target(m)
+    if m == nil then return nil end
+
+    if Camera.is_active() then
+        local origin, direction = Camera.get_ray(m)
+        if origin ~= nil and direction ~= nil then
+            local hit = get_world_surface_hit(origin, direction)
+            if hit ~= nil and hit.surface ~= nil then
+                local allowed, reason = Terrain.is_mineable_surface(hit.surface)
+                if allowed then return hit.surface, hit.hitPos end
+                return nil, nil, reason
+            end
+        end
+    end
+
+    local floor_surface = m.floor
+    local allowed, reason = Terrain.is_mineable_surface(floor_surface)
+    if allowed then return floor_surface, m.pos end
+    return nil, nil, reason
+end
+
+local function terrain_mining_position(position, mario)
+    if position ~= nil then
+        return {
+            x = tonumber(position.x) or 0,
+            y = tonumber(position.y) or 0,
+            z = tonumber(position.z) or 0,
+        }
+    end
+    local p = mario and mario.pos or nil
+    return {
+        x = p and (tonumber(p.x) or 0) or 0,
+        y = p and (tonumber(p.y) or 0) or 0,
+        z = p and (tonumber(p.z) or 0) or 0,
+    }
+end
+
+local function play_terrain_break_sound(mario, position)
+    local material = get_footstep_material(mario)
+    local block_id = material == "grass" and "minecraft:grass_block"
+        or (material == "dirt" or material == "sand") and "minecraft:dirt"
+        or (material == "wood") and "minecraft:oak_planks"
+        or "minecraft:stone"
+    Sounds.play_break(block_id, terrain_mining_position(position, mario))
+end
+
+local function destroy_target_terrain(surface, hit_position, signature, mario)
+    local destroyed, snapshot_or_reason = Terrain.delete_surface(surface)
+    if not destroyed then
+        print("[SteveCraft] Cannot destroy level terrain: " .. tostring(snapshot_or_reason))
+        return false
+    end
+
+    local snapshot = snapshot_or_reason
+    sDestroyedTerrain[signature] = snapshot
+    save_destroyed_terrain()
+    spawn_terrain_mask(snapshot)
+    play_terrain_break_sound(mario, hit_position)
+    print("[SteveCraft] Destroyed one level-terrain collision triangle.")
+    return true
+end
+
 local function update_block_mining(m)
     local x, y, z = get_build_target(m, "remove")
-    if x == nil then
-        sMiningCellKey = nil
-        sMiningFrames = 0
-        sMiningRequiredFrames = 0
+    if x ~= nil then
+        local key = cell_key(x, y, z)
+        local cell = sWorldBlocks[key]
+        if cell ~= nil then
+            local definition = BLOCK_CATALOG[cell.id]
+            if definition == nil or definition.destroy_speed < 0 then
+                sMiningCellKey = key
+                sMiningTargetKind = "block"
+                sMiningSurfaceKey = nil
+                sMiningFrames = 0
+                sMiningRequiredFrames = 0
+                return
+            end
+
+            if sMiningCellKey ~= key or sMiningTargetKind ~= "block" then
+                sMiningCellKey = key
+                sMiningTargetKind = "block"
+                sMiningSurfaceKey = nil
+                sMiningFrames = 0
+                sMiningRequiredFrames = mining_frames_for_hardness(definition.destroy_speed) or 0
+            end
+
+            sMiningFrames = sMiningFrames + 1
+            if sMiningRequiredFrames > 0 and sMiningFrames >= sMiningRequiredFrames then
+                local removed, reason = remove_grid_block(x, y, z)
+                if not removed then
+                    print("[SteveCraft] Cannot mine block: " .. tostring(reason))
+                end
+                reset_mining_target()
+            end
+            return
+        end
+    end
+
+    -- If no SteveCraft voxel occupies the crosshair, mine the actual level
+    -- collision surface. The returned userdata is used only in this frame;
+    -- it is never cached because deletion invalidates the CObject reference.
+    local surface, hit_position, reason = get_terrain_mining_target(m)
+    if surface == nil then
+        reset_mining_target()
         return
     end
 
-    local key = cell_key(x, y, z)
-    local cell = sWorldBlocks[key]
-    if cell == nil then
-        sMiningCellKey = nil
-        sMiningFrames = 0
-        sMiningRequiredFrames = 0
+    local signature = Terrain.surface_signature(surface)
+    if signature == nil then
+        reset_mining_target()
         return
     end
-
-    local definition = BLOCK_CATALOG[cell.id]
-    if definition == nil or definition.destroy_speed < 0 then
-        sMiningCellKey = key
+    local target_key = "terrain:" .. signature
+    if sMiningCellKey ~= target_key or sMiningTargetKind ~= "terrain" then
+        sMiningCellKey = target_key
+        sMiningTargetKind = "terrain"
+        sMiningSurfaceKey = signature
         sMiningFrames = 0
-        sMiningRequiredFrames = 0
-        return
-    end
-
-    if sMiningCellKey ~= key then
-        sMiningCellKey = key
-        sMiningFrames = 0
-        sMiningRequiredFrames = mining_frames_for_hardness(definition.destroy_speed) or 0
+        -- Static terrain has no Java block-state hardness metadata. Use the
+        -- prototype stone break time until an area/material hardness map exists.
+        sMiningRequiredFrames = mining_frames_for_hardness(1.5) or 68
     end
 
     sMiningFrames = sMiningFrames + 1
-    local required = sMiningRequiredFrames
-    if required > 0 and sMiningFrames >= required then
-        local removed, reason = remove_grid_block(x, y, z)
-        if not removed then
-            print("[SteveCraft] Cannot mine block: " .. tostring(reason))
-        end
-        sMiningCellKey = nil
-        sMiningFrames = 0
-        sMiningRequiredFrames = 0
+    if sMiningRequiredFrames > 0 and sMiningFrames >= sMiningRequiredFrames then
+        destroy_target_terrain(surface, hit_position, signature, m)
+        reset_mining_target()
     end
 end
-
 
 local sLastPlaceFrame = nil
 local sPlaceButtonLatched = false
@@ -1025,9 +1119,7 @@ local function consume_build_controls(m)
         update_block_mining(m)
         consumed = consumed | B_BUTTON
     else
-        sMiningCellKey = nil
-        sMiningFrames = 0
-        sMiningRequiredFrames = 0
+        reset_mining_target()
     end
 
     if consumed ~= 0 then
@@ -1098,6 +1190,7 @@ local function apply_steve_to_mario(m)
     if m == nil or m.playerIndex ~= 0 then return end
     Camera.update_health(m)
     Camera.ensure(m)
+    process_pending_terrain_masks()
     local state = Physics.update(m, Sounds, get_footstep_material)
     Model.apply_to_player(m, state)
 end
@@ -1107,9 +1200,7 @@ local function on_warp()
     Model.reset()
     Camera.reset()
     Physics.reset()
-    sMiningCellKey = nil
-    sMiningFrames = 0
-    sMiningRequiredFrames = 0
+    reset_mining_target()
     sPlaceButtonLatched = false
     sLastPlaceFrame = nil
     deactivate_world_objects()
