@@ -121,6 +121,11 @@ hooks[HOOK_BEFORE_GEO_PROCESS](node, 0)
 local stone_mesh = Renderer.get_mesh("minecraft:stone")
 assert(stone_mesh ~= nil and stone_mesh.vertex_count == 24, "stone cube did not build 24 vertices")
 assert(stone_mesh.command_count == #stone_mesh.gfx.buffer.commands, "stone Gfx command count mismatch")
+local point_filter_found = false
+for _, entry in ipairs(stone_mesh.gfx.buffer.commands) do
+    if entry.command == "gsDPSetTextureFilter(G_TF_POINT)" then point_filter_found = true end
+end
+assert(point_filter_found, "voxel renderer did not force nearest-neighbor texture filtering")
 assert(node.displayList == stone_mesh.gfx, "stone display list was not substituted")
 assert(node.flags == LAYER_OPAQUE * 256 + 3, "opaque block display layer changed unexpectedly")
 
