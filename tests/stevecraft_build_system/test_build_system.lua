@@ -552,17 +552,18 @@ local function test_separated_modules_and_audio()
         vel = { y = 0 },
     }
     gGlobalTimer = 700
+    local audio_baseline = #audio_events
     local state_name = physics.update(walker, sounds, function() return "wood" end)
     assert(state_name == "move", "movement adapter did not detect walking")
-    assert(#audio_events == 1, "footstep sound did not fire exactly once")
-    assert(audio_events[1].sample.path == "modfs:/stevecraft/assets/sounds/wood_step.ogg", "wrong material footstep sound")
+    assert(#audio_events == audio_baseline + 1, "footstep sound did not fire exactly once")
+    assert(audio_events[audio_baseline + 1].sample.path == "modfs:/stevecraft/assets/sounds/wood_step.ogg", "wrong material footstep sound")
     physics.update(walker, sounds, function() return "wood" end)
-    assert(#audio_events == 1, "footstep cadence played twice in one frame")
+    assert(#audio_events == audio_baseline + 1, "footstep cadence played twice in one frame")
 
     sounds.play_place("minecraft:stone", walker.pos)
     sounds.play_break("minecraft:dirt", walker.pos)
-    assert(audio_events[#audio_events - 1].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
-    assert(audio_events[#audio_events].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
+    assert(audio_events[audio_baseline + 2].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
+    assert(audio_events[audio_baseline + 3].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
     print("PASS: separate modules and original block/footstep sound playback")
 end
 
