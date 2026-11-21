@@ -894,6 +894,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         get_build_system_state = get_build_system_state,
         get_world_context = get_world_context,
         clear_all_world_grids = clear_all_world_grids,
+        reset_scene = on_warp,
         get_behavior_init = function() return sGridBehaviorInit end,
         get_behavior_loop = function() return sGridBehaviorLoop end,
         get_behavior_id = function() return sGridBlockBehaviorId end,
