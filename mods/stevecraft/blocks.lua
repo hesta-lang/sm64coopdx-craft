@@ -71,6 +71,18 @@ Blocks.catalog = {
     },
 }
 
+Blocks.texture_tiles = {
+    ["minecraft:stone"] = { 0, 0 },
+    ["minecraft:dirt"] = { 16, 0 },
+    ["minecraft:grass_block"] = { 32, 0 },
+    ["minecraft:oak_planks"] = { 64, 0 },
+    ["minecraft:cobblestone"] = { 80, 0 },
+    ["minecraft:glass"] = { 96, 0 },
+    ["minecraft:bricks"] = { 112, 0 },
+    ["minecraft:sand"] = { 128, 0 },
+    ["minecraft:bedrock"] = { 144, 0 },
+}
+
 Blocks.default_hotbar = {
     "minecraft:stone",
     "minecraft:dirt",
