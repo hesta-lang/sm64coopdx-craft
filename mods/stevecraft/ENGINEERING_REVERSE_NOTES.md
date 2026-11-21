@@ -53,6 +53,29 @@ The production mod uses guarded calls rather than `assert`, so runtime problems 
 
 The current binary remains unchanged at `actors/minecraft_steve_geo.bin`. Its resolved internal GeoLayout symbol is `mario_geo`. The model is assigned to the existing local-player `m.marioObj`; no second actor is spawned and the APK is not modified.
 
+### Bedrock's actual player rig and layered animation model
+
+The public `geometry.humanoid.custom` geometry uses these main hierarchy elements:
+
+- `root`
+- `waist` (child of `root`)
+- `body` (child of `waist`)
+- `head` and `hat` (head is child of body; hat is child of head)
+- `leftArm` -> `leftSleeve` and `leftItem`
+- `rightArm` -> `rightSleeve` and `rightItem`
+- `leftLeg` -> `leftPants`
+- `rightLeg` -> `rightPants`
+- `jacket` (child of body)
+- `cape` (child of body)
+
+The player root animation controller has separate first-person, third-person, map-player, and paperdoll states. In third person it layers a base pose, look-at, arm movement, leg movement, cape, holding, sneak, swim/crawl, sleeping, attack, and item animations. This is not a simple one-state-at-a-time idle/walk/jump switch.
+
+The public player definition computes a shared walk-cycle phase from `query.modified_distance_moved` and `query.modified_move_speed` in `variable.tcos0`. `animation.player.move.arms` applies opposite rotations to the arms; `animation.player.move.legs` applies opposing leg rotations scaled by 1.4. These equations can be translated to Lua after the target SM64CoopDX bone/joint mapping is known.
+
+### Why the next step is a rig audit
+
+The Bedrock rig names above are case-sensitive identifiers used to match animation channels. The current DynOS asset's mesh labels are Mario-style, so a direct transfer of `leftArm`/`rightArm`/`leftLeg` names is not justified. First document the actual GeoLayout branch and animated-part order inside `mario_geo`; then construct an explicit mapping table from Bedrock body roles to existing SM64 joints. If no matching joints exist, a new rigged asset is required—but that would be a separate, explicit model-authoring step, not a Lua camera/physics tweak.
+
 ## 4. Important differences and limits
 
 - Bedrock's player geometry has a humanoid bone hierarchy. A DynOS `.geo.bin` is a compiled GeoLayout/display-list asset. They are not interchangeable formats.
