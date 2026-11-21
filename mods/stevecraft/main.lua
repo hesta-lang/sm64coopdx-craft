@@ -281,7 +281,7 @@ local function on_add_terrain_surface(surface, dynamic)
     end
 end
 
-local function clear_terrain_mask_objects()
+clear_terrain_mask_objects = function()
     for _, object in pairs(sTerrainMaskObjects) do
         if object and type(ACTIVE_FLAG_DEACTIVATED) == "number" then
             pcall(function() object.activeFlags = ACTIVE_FLAG_DEACTIVATED end)
@@ -293,8 +293,10 @@ local function clear_terrain_mask_objects()
     sSpawnedTerrainMasks = {}
 end
 
+local clear_terrain_mask_objects
+
 local function on_clear_terrain_areas()
-    clear_terrain_mask_objects()
+    if clear_terrain_mask_objects then clear_terrain_mask_objects() end
     sTerrainWorldKey = nil
     sDestroyedTerrain = {}
     sPendingTerrainMasks = {}
@@ -1236,6 +1238,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         voxel_renderer = VoxelRenderer,
         grid_transform = GridTransform,
         section_updates = SectionUpdates,
+        terrain = Terrain,
     }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = Camera.ensure,
@@ -1294,6 +1297,14 @@ hook_event(HOOK_MARIO_UPDATE, apply_steve_to_mario)
 hook_event(HOOK_BEFORE_MARIO_UPDATE, consume_build_controls)
 hook_event(HOOK_ON_HUD_RENDER, render_build_inventory)
 hook_event(HOOK_ON_WARP, on_warp)
+if type(HOOK_ON_ADD_SURFACE) == "number" then
+    hook_event(HOOK_ON_ADD_SURFACE, on_add_terrain_surface)
+else
+    print("[SteveCraft] WARNING: this SM64CoopDX build lacks HOOK_ON_ADD_SURFACE; mined terrain will not be restored after reloading the level.")
+end
+if type(HOOK_ON_CLEAR_AREAS) == "number" then
+    hook_event(HOOK_ON_CLEAR_AREAS, on_clear_terrain_areas)
+end
 if type(HOOK_ON_LEVEL_INIT) == "number" then
     hook_event(HOOK_ON_LEVEL_INIT, on_warp)
 end
