@@ -6,7 +6,8 @@
 local Renderer = {}
 
 local texture_info = {}
-local meshes = {} -- per-object mesh instances; vertex color values encode AO
+local meshes = {} -- object key -> reusable cached voxel mesh
+local mesh_cache = {}
 local material_meshes = {}
 local object_blocks = {}
 local object_ready = {}
@@ -343,6 +344,15 @@ local function shading_signature(shading)
     return table.concat(parts, ",")
 end
 
+local function mesh_cache_id(block_id, visible_signature, shade_signature)
+    local source = block_id .. "|" .. visible_signature .. "|" .. shade_signature
+    local hash = 5381
+    for index = 1, #source do
+        hash = (hash * 33 + source:byte(index)) % 2147483647
+    end
+    return block_id:gsub("[^%w_]", "_") .. "_" .. string.format("%08x", hash)
+end
+
 local function remember_display_nodes(first_node)
     local seen = {}
     local function visit(first)
@@ -420,6 +430,7 @@ local function on_level_init()
     object_blocks = {}
     object_ready = {}
     meshes = {}
+    mesh_cache = {}
     material_meshes = {}
     display_nodes = {}
 end
@@ -462,17 +473,23 @@ function Renderer.attach(object, block_id, world_blocks)
     if mesh == nil or mesh.block_id ~= block_id
         or mesh.shade_signature ~= signature
         or mesh.face_signature ~= visible_signature then
-        local err
-        mesh, err = build_mesh(block_id, face_shading, key, visible_faces)
+        local cache_id = mesh_cache_id(block_id, visible_signature, signature)
+        mesh = mesh_cache[cache_id]
         if mesh == nil then
-            if not warned[block_id] then
-                print("[SteveCraft] WARNING: voxel renderer disabled for " .. tostring(block_id) .. ": " .. tostring(err))
-                warned[block_id] = true
+            local err
+            mesh, err = build_mesh(block_id, face_shading, cache_id, visible_faces)
+            if mesh == nil then
+                if not warned[block_id] then
+                    print("[SteveCraft] WARNING: voxel renderer disabled for " .. tostring(block_id) .. ": " .. tostring(err))
+                    warned[block_id] = true
+                end
+                return false
             end
-            return false
+            mesh.shade_signature = signature
+            mesh.face_signature = visible_signature
+            mesh.cache_id = cache_id
+            mesh_cache[cache_id] = mesh
         end
-        mesh.shade_signature = signature
-        mesh.face_signature = visible_signature
         meshes[key] = mesh
         material_meshes[block_id] = mesh
     end
@@ -518,7 +535,7 @@ end
 
 function Renderer.debug_counts()
     local mesh_count, node_count, object_count = 0, 0, 0
-    for _ in pairs(meshes) do mesh_count = mesh_count + 1 end
+    for _ in pairs(mesh_cache) do mesh_count = mesh_count + 1 end
     for _ in pairs(display_nodes) do node_count = node_count + 1 end
     for _ in pairs(object_blocks) do object_count = object_count + 1 end
     return { meshes = mesh_count, display_nodes = node_count, objects = object_count }
