@@ -47,6 +47,12 @@ local function material_for_block(block_id)
     return "stone"
 end
 
+local function sample_is_ready(sample)
+    if sample == nil then return false end
+    local read_ok, state = pcall(function() return sample.loaded end)
+    return not read_ok or state ~= false
+end
+
 function Sounds.load(force)
     local current_frame = tonumber(gGlobalTimer) or 0
     if attempted then return true end
@@ -66,33 +72,35 @@ function Sounds.load(force)
     local loaded = 0
     local failed = 0
     for name, path in pairs(sample_files) do
-        if samples[name] == nil then
+        local sample = samples[name]
+        if sample == nil then
             local uri = Assets.get_uri(path)
-            local ok, sample = false, nil
+            local ok, loaded_sample = false, nil
             if uri ~= nil then
-                ok, sample = pcall(audio_sample_load, uri)
+                ok, loaded_sample = pcall(audio_sample_load, uri)
             end
-            local is_loaded = false
-            if ok and sample ~= nil then
-                local read_ok, state = pcall(function() return sample.loaded end)
-                is_loaded = not read_ok or state ~= false
-            end
-            if ok and sample ~= nil and is_loaded then
+            if ok and loaded_sample ~= nil then
+                sample = loaded_sample
                 samples[name] = sample
-                loaded = loaded + 1
                 if type(MOD_AUDIO_CHANNEL_SFX) == "number" then
                     pcall(function() sample.channel = MOD_AUDIO_CHANNEL_SFX end)
                 end
                 pcall(function() sample.baseVolume = 1.0 end)
-            else
-                failed = failed + 1
-                if failed <= 2 then
-                    print("[SteveCraft] WARNING: failed to load " .. path .. " from "
-                        .. tostring(uri) .. ": " .. tostring(sample))
-                end
+            elseif failed < 2 then
+                print("[SteveCraft] WARNING: failed to create " .. path .. " from "
+                    .. tostring(uri) .. ": " .. tostring(loaded_sample))
             end
-        else
+        end
+
+        -- Keep not-yet-ready ModAudio objects and poll their loaded flag on
+        -- subsequent retries instead of throwing away a valid async load.
+        if sample_is_ready(sample) then
             loaded = loaded + 1
+        else
+            failed = failed + 1
+            if failed <= 2 then
+                print("[SteveCraft] WARNING: waiting for ModAudio resource " .. path .. " to finish loading.")
+            end
         end
     end
     if loaded == SAMPLE_COUNT then
@@ -109,7 +117,7 @@ end
 function Sounds.play(name, position, volume)
     if not attempted then Sounds.load() end
     local sample = samples[name]
-    if sample == nil or type(audio_sample_play) ~= "function" then return false end
+    if not sample_is_ready(sample) or type(audio_sample_play) ~= "function" then return false end
     local ok, result = pcall(audio_sample_play, sample, current_position(position), volume or 0.9)
     if not ok then
         print("[SteveCraft] ERROR: audio_sample_play failed for " .. tostring(name) .. ": " .. tostring(result))
