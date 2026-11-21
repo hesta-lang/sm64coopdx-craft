@@ -4,7 +4,7 @@
 -- pausable: true
 
 local STEVECRAFT_VERSION = "0.2.0-alpha"
-local STEVE_GEO_NAME = "steve_geo"
+local STEVE_GEO_NAME = "minecraft_steve_geo"
 
 -- These values are an initial SM64-unit controller profile, not final
 -- Minecraft constants. The exact scale will be calibrated with Steve's model.
