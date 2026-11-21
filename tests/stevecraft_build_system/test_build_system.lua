@@ -620,7 +620,7 @@ local function test_separated_modules_and_audio()
         action = 0, forwardVel = 6, floor = {},
         pos = { x = 0, y = 0, z = 0 }, vel = { y = 0 },
     }
-    gGlobalTimer = 701
+    gGlobalTimer = 720
     state_name = physics.update(fallback_walker, sounds, function() return "stone" end)
     assert(state_name == "move", "grounded forward movement fallback was not detected")
     assert(#audio_events == audio_baseline + 2, "fallback Minecraft footstep did not play")
