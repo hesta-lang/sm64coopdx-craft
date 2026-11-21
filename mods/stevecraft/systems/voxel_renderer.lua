@@ -143,7 +143,6 @@ local function set_vertices(vtx, block_id, face_shading)
 end
 
 local function build_mesh(block_id, face_shading, mesh_key)
-    if meshes[block_id] ~= nil then return meshes[block_id] end
     if type(gfx_create) ~= "function" or type(vtx_create) ~= "function"
         or type(gfx_set_command) ~= "function" or type(cast_graph_node) ~= "function"
         or type(gfx_get_next_command) ~= "function"
