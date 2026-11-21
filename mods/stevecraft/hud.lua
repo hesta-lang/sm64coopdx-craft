@@ -3,6 +3,7 @@
 -- SteveCraft artwork. Users can replace them with licensed vanilla copies.
 
 local HUD = {}
+local Assets = require("assets")
 local atlas = nil
 local hotbar = nil
 local selection = nil
@@ -36,12 +37,20 @@ local function load_textures()
     if loaded then return end
     loaded = true
     if type(get_texture_info) ~= "function" then return end
-    local ok, result = pcall(get_texture_info, "stevecraft_atlas")
+    local atlas_uri = Assets.get_uri("textures/stevecraft_atlas.png")
+    local hotbar_uri = Assets.get_uri("textures/hud/hotbar.png")
+    local selection_uri = Assets.get_uri("textures/hud/hotbar_selection.png")
+    local ok, result = false, nil
+    if atlas_uri ~= nil then ok, result = pcall(get_texture_info, atlas_uri) end
     if ok then atlas = result end
-    ok, result = pcall(get_texture_info, "hud/hotbar")
-    if ok then hotbar = result end
-    ok, result = pcall(get_texture_info, "hud/hotbar_selection")
-    if ok then selection = result end
+    if hotbar_uri ~= nil then
+        ok, result = pcall(get_texture_info, hotbar_uri)
+        if ok then hotbar = result end
+    end
+    if selection_uri ~= nil then
+        ok, result = pcall(get_texture_info, selection_uri)
+        if ok then selection = result end
+    end
 end
 
 local function render_texture(texture, x, y, scale_x, scale_y)
