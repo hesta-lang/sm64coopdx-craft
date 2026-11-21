@@ -61,6 +61,7 @@ local GRID_CELL_SIZE = 90
 local GRID_SECTION_SIZE = SectionUpdates.SECTION_SIZE or 16
 local GRID_OBJECT_SCALE = 0.45
 local GRID_MAX_BLOCKS_PER_AREA = 128
+local MAX_TERRAIN_HOLE_MASKS_PER_AREA = 128
 local GRID_STORAGE_CHUNK_SIZE = 800
 local GRID_MAX_BUILD_HEIGHT_OFFSET = 8
 local GRID_BUILD_DISTANCE = GRID_CELL_SIZE * 1.5
@@ -81,6 +82,8 @@ local sTerrainWorldKey = nil
 local sDestroyedTerrain = {}
 local sPendingTerrainMasks = {}
 local sSpawnedTerrainMasks = {}
+local sTerrainMaskCount = 0
+local sTerrainMaskLimitWarned = false
 local sCurrentWorldKey = nil
 local sCurrentWorldPrefix = nil
 local sCurrentSaveSlot = nil
@@ -293,6 +296,8 @@ clear_terrain_mask_objects = function()
     sTerrainMaskObjects = {}
     sTerrainMaskRetryByObject = {}
     sSpawnedTerrainMasks = {}
+    sTerrainMaskCount = 0
+    sTerrainMaskLimitWarned = false
 end
 
 local function on_clear_terrain_areas()
@@ -519,6 +524,14 @@ end
 local function spawn_terrain_mask(snapshot)
     if type(snapshot) ~= "table" or type(snapshot.signature) ~= "string" then return false end
     if sSpawnedTerrainMasks[snapshot.signature] then return true end
+    if sTerrainMaskCount >= MAX_TERRAIN_HOLE_MASKS_PER_AREA then
+        if not sTerrainMaskLimitWarned then
+            print("[SteveCraft] WARNING: reached the " .. tostring(MAX_TERRAIN_HOLE_MASKS_PER_AREA)
+                .. "-mask visual limit; terrain collision can still be removed.")
+            sTerrainMaskLimitWarned = true
+        end
+        return false
+    end
     if sTerrainMaskBehaviorId == nil or type(E_MODEL_BREAKABLE_BOX) ~= "number"
         or type(spawn_non_sync_object) ~= "function" then
         print("[SteveCraft] WARNING: terrain collision was removed, but its visual hole mask is unavailable.")
@@ -556,6 +569,7 @@ local function spawn_terrain_mask(snapshot)
 
     sTerrainMaskObjects[snapshot.signature] = object
     sSpawnedTerrainMasks[snapshot.signature] = true
+    sTerrainMaskCount = sTerrainMaskCount + 1
     if not VoxelRenderer.is_surface_mask(object) then
         local pointer_ok, pointer = pcall(function() return object._pointer end)
         if pointer_ok and pointer ~= nil then
