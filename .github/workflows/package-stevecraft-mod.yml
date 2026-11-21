@@ -14,6 +14,17 @@ on:
       - "tests/stevecraft_animation/**"
       - "tests/stevecraft_build_system/**"
       - ".github/workflows/package-stevecraft-mod.yml"
+  pull_request:
+    branches:
+      - stevecraft-normal-mod-alpha
+    paths:
+      - "mods/stevecraft/actors/minecraft_steve_geo.bin"
+      - "mods/stevecraft/main.lua"
+      - "mods/stevecraft/README.md"
+      - "mods/stevecraft/ENGINEERING_REVERSE_NOTES.md"
+      - "tests/stevecraft_animation/**"
+      - "tests/stevecraft_build_system/**"
+      - ".github/workflows/package-stevecraft-mod.yml"
   workflow_dispatch:
 
 permissions:
