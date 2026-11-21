@@ -11,6 +11,7 @@ local mesh_cache = {}
 local material_meshes = {}
 local object_blocks = {}
 local object_ready = {}
+local surface_masks = {}
 local display_nodes = {}
 local hooks_installed = false
 local warned = {}
@@ -150,6 +151,140 @@ local function set_vertices(vtx, block_id, face_shading, visible_faces)
         end
     end
     return true, vertex_index
+end
+
+
+local function build_surface_mask_mesh(mesh_key, snapshot)
+    if type(gfx_create) ~= "function" or type(vtx_create) ~= "function"
+        or type(gfx_set_command) ~= "function" or type(gfx_get_next_command) ~= "function"
+        or type(gfx_get_from_name) ~= "function" or type(gfx_resize) ~= "function"
+        or type(vtx_get_vertex) ~= "function" or type(vtx_get_from_name) ~= "function"
+        or type(vtx_resize) ~= "function" then
+        return nil, "dynamic Gfx/Vtx APIs are unavailable"
+    end
+
+    local vertices = snapshot and snapshot.vertices or nil
+    local normal = snapshot and snapshot.normal or nil
+    if type(vertices) ~= "table" or #vertices ~= 3 or type(normal) ~= "table" then
+        return nil, "invalid terrain triangle snapshot"
+    end
+    local nx, ny, nz = tonumber(normal.x) or 0, tonumber(normal.y) or 1, tonumber(normal.z) or 0
+    local length = math.sqrt(nx * nx + ny * ny + nz * nz)
+    if length < 0.0001 then return nil, "terrain triangle has no valid normal" end
+    nx, ny, nz = nx / length, ny / length, nz / length
+
+    local center = { x = 0, y = 0, z = 0 }
+    for index = 1, 3 do
+        center.x = center.x + (tonumber(vertices[index].x) or 0) / 3
+        center.y = center.y + (tonumber(vertices[index].y) or 0) / 3
+        center.z = center.z + (tonumber(vertices[index].z) or 0) / 3
+    end
+
+    local points = {}
+    for index = 1, 3 do
+        local p = vertices[index]
+        points[index] = {
+            x = (tonumber(p.x) or 0) - center.x,
+            y = (tonumber(p.y) or 0) - center.y,
+            z = (tonumber(p.z) or 0) - center.z,
+        }
+    end
+    local top, bottom = {}, {}
+    local mask_lift, cavity_depth = 1.5, 180
+    for index = 1, 3 do
+        local p = points[index]
+        top[index] = {
+            p.x + nx * mask_lift,
+            p.y + ny * mask_lift,
+            p.z + nz * mask_lift,
+        }
+        bottom[index] = {
+            p.x - nx * cavity_depth,
+            p.y - ny * cavity_depth,
+            p.z - nz * cavity_depth,
+        }
+    end
+
+    -- A dark triangular prism overlays the now non-colliding source triangle.
+    -- It gives the hole depth in the renderer without editing unrelated level
+    -- GeoLayouts or requiring an APK/native-code rebuild.
+    local positions = {
+        top[1], top[2], top[3],
+        bottom[1], bottom[2], bottom[3],
+        top[1], top[2], bottom[2], bottom[1],
+        top[2], top[3], bottom[3], bottom[2],
+        top[3], top[1], bottom[1], bottom[3],
+    }
+    local vertex_count = #positions
+    local name = tostring(mesh_key):gsub("[^%w_]", "_")
+    local vtx_name = "stevecraft_terrain_hole_" .. name .. "_vtx"
+    local gfx_name = "stevecraft_terrain_hole_" .. name .. "_dl"
+    local vtx = vtx_get_from_name(vtx_name)
+    if vtx == nil then
+        vtx = vtx_create(vtx_name, vertex_count)
+    else
+        vtx_resize(vtx, vertex_count)
+    end
+    if vtx == nil then return nil, "could not allocate terrain mask vertices" end
+
+    for index, position in ipairs(positions) do
+        local vertex = vtx_get_vertex(vtx, index - 1)
+        if vertex == nil then return nil, "could not access terrain mask vertex" end
+        vertex.x, vertex.y, vertex.z = position[1], position[2], position[3]
+        vertex.tu, vertex.tv = 0, 0
+        local r, g, b = 10, 8, 6
+        if index >= 7 and index <= 18 then r, g, b = 24, 17, 10 end
+        if index >= 4 and index <= 6 then r, g, b = 3, 2, 2 end
+        vertex.r, vertex.g, vertex.b, vertex.a = r, g, b, 255
+    end
+
+    local gfx = gfx_get_from_name(gfx_name)
+    if gfx == nil then
+        gfx = gfx_create(gfx_name, 20)
+    else
+        gfx_resize(gfx, 20)
+    end
+    if gfx == nil then return nil, "could not allocate terrain mask display list" end
+
+    local cursor, command_count = gfx, 0
+    local function add(command, ...)
+        if cursor == nil then return false, "display list full before " .. command end
+        local ok, err = pcall(gfx_set_command, cursor, command, ...)
+        if not ok then return false, tostring(err) end
+        command_count = command_count + 1
+        cursor = gfx_get_next_command(cursor)
+        return true
+    end
+    local function require_command(command, ...)
+        local ok, err = add(command, ...)
+        if not ok then error(err, 0) end
+    end
+
+    local ok, err = pcall(function()
+        require_command("gsSPGeometryMode(G_TEXTURE_GEN | G_CULL_BOTH | G_LIGHTING, 0)")
+        require_command("gsDPSetCombineMode(G_CC_SHADE, G_CC_SHADE)")
+        require_command("gsSPTexture(0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_OFF)")
+        require_command("gsSPVertex(%v, %i, 0)", vtx, vertex_count)
+        require_command("gsSP2Triangles(0, 1, 2, 0, 3, 5, 4, 0)")
+        require_command("gsSP2Triangles(6, 7, 8, 0, 6, 8, 9, 0)")
+        require_command("gsSP2Triangles(10, 11, 12, 0, 10, 12, 13, 0)")
+        require_command("gsSP2Triangles(14, 15, 16, 0, 14, 16, 17, 0)")
+        require_command("gsDPSetCombineMode(G_CC_SHADE, G_CC_SHADE)")
+        require_command("gsSPEndDisplayList()")
+    end)
+    if not ok then return nil, "terrain mask Gfx generation failed: " .. tostring(err) end
+
+    return {
+        block_id = "stevecraft:terrain_hole",
+        gfx = gfx,
+        vtx = vtx,
+        vertex_count = vertex_count,
+        face_count = 5,
+        command_count = command_count,
+        center = center,
+        shade_signature = "terrain-mask",
+        face_signature = tostring(snapshot.signature or mesh_key),
+    }
 end
 
 local function build_mesh(block_id, face_shading, mesh_key, visible_faces)
@@ -422,6 +557,7 @@ local function on_object_unload(object)
     if key ~= nil then
         object_blocks[key] = nil
         object_ready[key] = nil
+        surface_masks[key] = nil
         meshes[key] = nil
     end
 end
@@ -429,6 +565,7 @@ end
 local function on_level_init()
     object_blocks = {}
     object_ready = {}
+    surface_masks = {}
     meshes = {}
     mesh_cache = {}
     material_meshes = {}
@@ -502,6 +639,27 @@ function Renderer.attach(object, block_id, world_blocks)
     return true
 end
 
+
+function Renderer.attach_surface_mask(object, snapshot)
+    local key = object_key(object)
+    if key == nil then return false end
+    local signature = snapshot and snapshot.signature or nil
+    if signature == nil then return false end
+
+    local mesh_key = signature:gsub("[^%w_]", "_")
+    local mesh = build_surface_mask_mesh(mesh_key, snapshot)
+    if mesh == nil then return false end
+
+    meshes[key] = mesh
+    object_blocks[key] = "stevecraft:terrain_hole"
+    surface_masks[key] = signature
+    local ok, root = pcall(function() return object.header.gfx.sharedChild end)
+    if not ok or root == nil then return false end
+    remember_display_nodes(root)
+    object_ready[key] = true
+    return true
+end
+
 function Renderer.compute_face_shading(world_blocks, x, y, z)
     return calculate_face_shading(world_blocks or {}, x, y, z)
 end
@@ -531,6 +689,11 @@ end
 function Renderer.is_ready(object)
     local key = object_key(object)
     return key ~= nil and object_ready[key] == true
+end
+
+function Renderer.is_surface_mask(object)
+    local key = object_key(object)
+    return key ~= nil and surface_masks[key] ~= nil
 end
 
 function Renderer.debug_counts()
