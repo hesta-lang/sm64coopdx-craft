@@ -37,6 +37,13 @@ HUD_TEXTURES = (
     "textures/gui/sprites/hud/experience_bar_background.png",
     "textures/gui/sprites/hud/experience_bar_progress.png",
 )
+BLOCK_ICON_FILES = tuple(
+    f"textures/stevecraft/icons/{name}.png"
+    for name in (
+        "stone", "dirt", "grass_block", "oak_planks", "cobblestone",
+        "glass", "bricks", "sand", "bedrock",
+    )
+)
 SOUND_FILES = tuple(
     f"sounds/{material}_{action}.ogg"
     for material in ("stone", "dirt", "grass", "wood", "glass", "sand")
@@ -56,7 +63,7 @@ def main() -> int:
         raise SystemExit("Missing required block textures: " + ", ".join(required_missing))
 
     resources: dict[str, str] = {}
-    for relative in REQUIRED_BLOCK_TEXTURES + HUD_TEXTURES + SOUND_FILES:
+    for relative in REQUIRED_BLOCK_TEXTURES + HUD_TEXTURES + BLOCK_ICON_FILES + SOUND_FILES:
         path = root / relative
         if not path.is_file():
             if relative in REQUIRED_BLOCK_TEXTURES:
@@ -64,12 +71,13 @@ def main() -> int:
             print(f"Optional embedded resource missing: {relative}")
             continue
         data = path.read_bytes()
-        if relative in REQUIRED_BLOCK_TEXTURES:
+        if relative in REQUIRED_BLOCK_TEXTURES or relative in BLOCK_ICON_FILES:
             if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
                 raise SystemExit(f"Invalid PNG file: {relative}")
             width, height = struct.unpack(">II", data[16:24])
-            if width != 16 or height != 16:
-                raise SystemExit(f"Expected a 16x16 block texture, got {width}x{height}: {relative}")
+            expected = (32, 32) if relative in BLOCK_ICON_FILES else (16, 16)
+            if (width, height) != expected:
+                raise SystemExit(f"Expected a {expected[0]}x{expected[1]} PNG, got {width}x{height}: {relative}")
         if not data:
             raise SystemExit(f"Empty resource: {relative}")
         resources[relative] = base64.b64encode(data).decode("ascii")
