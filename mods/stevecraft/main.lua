@@ -898,7 +898,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
     return
 end
 
-Assets.import_all()
+Assets.import_all(STEVECRAFT_MOD_DIR)
 Sounds.load()
 
 -- Native Mario movement is retained. The invisible per-area grid creates real surface objects.
