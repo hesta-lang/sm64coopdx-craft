@@ -1,4 +1,4 @@
-# SteveCraft 0.4.6-alpha — Minecraft audio, pixel textures, X placement, and scene reset
+# SteveCraft 0.4.7-alpha — ambient occlusion, Minecraft footsteps, bundled cube icons
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
@@ -103,10 +103,12 @@ collision through `load_object_collision_model()`.
 
 ### Current block limitations
 
-- The nine starter block types now receive Lua-generated 24-vertex cube
-  display lists with the official Java 26.3 block textures. The renderer
-  swaps the existing breakable-box GeoLayout display-list pointer per object;
-  it does not add a new compiled actor or modify the APK.
+- The nine starter block types receive Lua-generated 24-vertex cube display
+  lists with official Java 26.3 textures. A per-face directional shade is
+  multiplied into the vertex colors, and each cube corner receives a local
+  voxel ambient-occlusion value based on nearby opaque SteveCraft blocks.
+  Glass is treated as non-occluding. The renderer swaps the existing breakable-
+  box GeoLayout display-list pointer per object; it does not modify the APK.
 - This is an isolated renderer prototype, not a chunk mesher: each block still
   draws six faces, even when faces are hidden against neighboring blocks.
   The current full-cube breakable-box collision mesh is unchanged.
@@ -115,15 +117,23 @@ collision through `load_object_collision_model()`.
   avoids depending on production Lua builds exposing `io.open`.
 - Native action-bank sounds (including Mario footsteps, jumps, landings and
   acrobatics) and the Mario voice bank are muted through `HOOK_ON_PLAY_SOUND`.
-  Environmental, object and menu banks are left active. SteveCraft plays the
-  Java step sample based on the voxel or host-terrain material while walking.
+  Environmental, object and menu banks are left active. Minecraft step samples
+  are loaded into the SFX channel from ModFS; failed samples are retried rather
+  than permanently marking the audio subsystem unavailable.
+- Footstep detection uses the grounded MarioState floor plus forward/horizontal
+  velocity fallback for Android builds that do not expose the expected moving
+  action flag. Sample gain is raised to audible SFX levels.
 - Every placed block is snapped to the exact center of its 90-unit grid cell.
   Pitch, yaw, roll and angular velocity are reset on spawn and every object
   update, so grid blocks do not inherit an incline or drift off the lattice.
 - The HUD rejects non-power-of-two textures before calling DJUI, avoiding
-  the reported `MPOT width or height` script error. The hotbar and selector are
-  drawn with pixel rectangles; inventory block icons use the block texture with
-  shaded right/bottom extrusion for a Minecraft-like cube appearance.
+  the reported `MPOT width or height` script error. The hotbar, health, hunger
+  and armor indicators are larger. Nine 32x32 isometric cube icons are generated
+  from the original block textures and embedded as mod-owned resources.
+- Resource installation includes a root-manifest fallback for mobile mod-file
+  loaders which reject `require("embedded_block_textures")` even when the file
+  is present in the ZIP. The package includes the manifest at both root and
+  `systems/` paths.
 - The catalogue includes Java 26.3 destroy speed, explosion resistance,
   friction, and sound-event IDs. Mining time uses a simple prototype scaling
   based on destroy speed; tool tiers and Java's complete breaking-speed
@@ -161,10 +171,12 @@ GitHub Actions checks:
 
 - Lua syntax and generated animation data.
 - Runtime Gfx/Vtx mesh construction, per-object GeoLayout pointer swapping,
-  glass transparency layer selection, and restoration of the vanilla model.
+  vertex directional shading, voxel corner ambient occlusion, glass transparency
+  and transparent-block AO behavior, and restoration of the vanilla model.
 - Binary resource embedding and Base64 decoding for production ModFS import.
-- Mario action/voice-bank suppression, material-to-Minecraft-audio selection,
-  zero-rotation grid transforms, MPOT-safe HUD rendering and X placement.
+- Mario action/voice-bank suppression, SFX sample loading/retry/playback,
+  material-to-Minecraft-audio selection, MPOT-safe HUD rendering and isometric
+  custom icon loading.
 - Embedded DYNOSBIN byte count/header and ModFS import/URI resolution using a
   mocked ModFS API.
 - Grid coordinate math, inventory accounting, placement/removal, dynamic
@@ -174,8 +186,11 @@ GitHub Actions checks:
 - Read-only GeoLayout checks against the original actor binary and Java 26.3
   block resource/runtime metadata.
 
-A green CI run proves the deterministic tests and package structure pass. It
-does **not** prove that the model renders correctly, that the first-person
-camera feels correct with Android touch input, or that dynamic block collision
-is correctly sized on a real SM64CoopDX Android build. Those require an
-in-game device test.
+The shading is a local voxel approximation: it implements face-direction brightness
+and corner occlusion, not Minecraft's full lightmap propagation or a global
+shadow-map system. It is intentionally limited to placed SteveCraft blocks so
+it does not change lighting across the original SM64 level.
+
+A green CI run proves deterministic tests and package structure pass. It does
+**not** prove actual Android audio output, the final visual appearance on the
+device, or dynamic collision sizing. Those require an in-game device test.
