@@ -529,6 +529,9 @@ local function test_first_person_camera_and_voxel_ray()
     local origin, direction = camera.get_camera_ray({ pos = { x = 0, y = 0, z = 0 } })
     assert(origin.x == 10 and origin.y == 110 and origin.z == 20, "camera ray did not use Lakitu's camera position")
     assert(math.abs(direction.z - 1) < 0.0001, "camera ray direction does not match the first-person view")
+    local surface_hit = camera.get_world_surface_hit(origin, direction, 100)
+    assert(surface_hit and surface_hit.precision == 2.0,
+        "surface ray did not route through native C collision query")
 
     build.render_inventory()
     assert(hud_rect_calls > 20, "first-person crosshair and pixel HUD did not render rectangles")
@@ -572,7 +575,7 @@ end
 local function test_separated_modules_and_audio()
     local modules = __STEVECRAFT_TEST.modules
     assert(type(modules) == "table", "subsystem module exports missing")
-    for _, name in ipairs({ "blocks", "sounds", "physics", "camera", "hud", "model" }) do
+    for _, name in ipairs({ "blocks", "sounds", "physics", "camera", "hud", "model", "native_engine" }) do
         assert(type(modules[name]) == "table", "missing module: " .. name)
     end
 
