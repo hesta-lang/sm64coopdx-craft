@@ -28,6 +28,8 @@ on:
       - "mods/stevecraft/ENGINEERING_REVERSE_NOTES.md"
       - "tests/stevecraft_animation/**"
       - "tests/stevecraft_build_system/**"
+      - "mods/stevecraft/systems/**"
+      - "tools/stevecraft_assets/**"
       - ".github/workflows/package-stevecraft-mod.yml"
   workflow_dispatch:
 
