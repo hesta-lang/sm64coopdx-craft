@@ -1,4 +1,4 @@
-# SteveCraft 0.4.1-alpha — Steve proxy, first-person prototype, and voxel build system
+# SteveCraft 0.4.2-alpha — Steve proxy, first-person prototype, and voxel build system
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
@@ -8,7 +8,7 @@ standalone mod ZIP; it does not alter or repackage the Android APK.
 - Mario remains the single engine/player object through the existing
   `m.marioObj`; Steve is not spawned as a second player actor.
 - The supplied `actors/minecraft_steve_geo.bin` remains byte-for-byte unchanged.
-- The DYNOSBIN is embedded in `main.lua` and imported into the active mod's
+- The DYNOSBIN is embedded in `model.lua` and imported into the active mod's
   ModFS on first launch. The mod saves it as
   `actors/minecraft_steve_geo.bin` and resolves it through the exact
   `modfs:/<modPath>/actors/minecraft_steve_geo.bin` URI.
@@ -75,8 +75,9 @@ dynamic surface objects that load collision through
   friction, and sound-event IDs. Mining time uses a simple prototype scaling
   based on destroy speed; tool tiers and Java's complete breaking-speed
   formula are not implemented.
-- Sound-event IDs are metadata only. Minecraft audio is not yet loaded or
-  played.
+- Java 26.3 step, place, and break OGG samples are extracted from the official
+  asset index, copied into ModFS, and routed through ModAudio. Material-specific
+  sound selection is implemented for the supported block families.
 - Friction metadata is not yet connected to Mario movement.
 - Block-state variants, slabs, stairs, fluids, redstone, crafting and mining
   drops are not implemented.
