@@ -468,6 +468,20 @@ local function place_grid_block(x, y, z)
     return true
 end
 
+local original_place_grid_block = place_grid_block
+place_grid_block = function(x, y, z, ...)
+    local placed, reason = original_place_grid_block(x, y, z, ...)
+    if placed then
+        local cell = sWorldBlocks[cell_key(x, y, z)]
+        if cell ~= nil then
+            stevecraft_play_block_sound("place", cell.id, { x = cell.x, y = cell.y, z = cell.z })
+        end
+    end
+    return placed, reason
+end
+
+
+
 local function remove_grid_block(x, y, z)
     if not ensure_world_loaded() then return false, "world_not_ready" end
     local key = cell_key(x, y, z)
@@ -495,6 +509,16 @@ local function remove_grid_block(x, y, z)
     save_world_grid()
     return true
 end
+
+local original_remove_grid_block = remove_grid_block
+remove_grid_block = function(x, y, z, ...)
+    local cell = sWorldBlocks[cell_key(x, y, z)]
+    local block_id = cell and cell.id or nil
+    local removed, reason = original_remove_grid_block(x, y, z, ...)
+    if removed then stevecraft_play_block_sound("break", block_id, { x = x, y = y, z = z }) end
+    return removed, reason
+end
+
 
 
 local function health_to_half_hearts(health)
@@ -729,6 +753,39 @@ local function apply_steve_to_mario(m)
     Camera.ensure(m)
     local state = Physics.update(m, Sounds, get_footstep_material)
     Model.apply_to_player(m, state)
+end
+
+
+local function stevecraft_play_block_sound(kind, block_id, position)
+    if type(STEVECRAFT_SYSTEMS.sounds.play) ~= "function" then return false end
+    local material = "stone"
+    if type(block_id) == "string" then
+        if block_id:find("dirt", 1, true) then material = "dirt"
+        elseif block_id:find("grass", 1, true) then material = "grass"
+        elseif block_id:find("planks", 1, true) then material = "wood"
+        elseif block_id:find("glass", 1, true) then material = "glass"
+        elseif block_id:find("sand", 1, true) then material = "sand"
+        elseif block_id:find("bedrock", 1, true) then material = "stone"
+        end
+    end
+    return STEVECRAFT_SYSTEMS.sounds.play(material .. "_" .. kind, position, 0.8, 1.0)
+end
+
+local sLastFootstepFrame = -1000
+local update_stevecraft_footstep
+update_stevecraft_footstep = function(m)
+    if m == nil or m.pos == nil or not STEVECRAFT_SYSTEMS.physics.is_grounded(m) then return end
+    local speed = math.abs(tonumber(m.forwardVel) or 0)
+    if speed < 5 then return end
+    local frame = tonumber(gGlobalTimer) or 0
+    if frame - sLastFootstepFrame < 10 then return end
+    local x = math.floor((m.pos.x or 0) / GRID_CELL_SIZE)
+    local y = math.floor(((m.pos.y or 0) - 8) / GRID_CELL_SIZE)
+    local z = math.floor((m.pos.z or 0) / GRID_CELL_SIZE)
+    local cell = sWorldBlocks[cell_key(x, y, z)] or sWorldBlocks[cell_key(x, y - 1, z)]
+    local block_id = cell and cell.id or "minecraft:stone"
+    local did_play = stevecraft_play_block_sound("step", block_id, m.pos)
+    if did_play then sLastFootstepFrame = frame end
 end
 
 local function on_warp()
