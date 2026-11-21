@@ -101,13 +101,11 @@ public final class BlockRegistryDump implements ModInitializer {
         return result;
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private static Map<String, String> stateProperties(BlockState state) {
         Map<String, String> values = new TreeMap<>();
-        for (Map.Entry<Property<?>, Comparable<?>> entry : state.getValues().entrySet()) {
-            Property property = entry.getKey();
-            values.put(property.getName(), property.getName(entry.getValue()));
-        }
+        state.getValues().forEach(value ->
+            values.put(value.property().getName(), value.valueName())
+        );
         return values;
     }
 
