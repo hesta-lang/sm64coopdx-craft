@@ -10,6 +10,20 @@ local collision_calls = 0
 local hud_lines = {}
 local hud_rect_calls = 0
 
+local audio_samples = {}
+local audio_events = {}
+function audio_sample_load(path)
+    local sample = { path = path }
+    audio_samples[path] = sample
+    return sample
+end
+function audio_sample_play(sample, position, volume)
+    audio_events[#audio_events + 1] = {
+        sample = sample, position = position, volume = volume,
+    }
+    return true
+end
+
 local modfs_file = nil
 local modfs_saved = false
 local modfs = { modPath = "stevecraft" }
@@ -504,5 +518,46 @@ local function test_model_asset_registration()
     print("PASS: embedded DYNOSBIN import and modular player callbacks")
 end
 
+local function test_separated_modules_and_audio()
+    local modules = __STEVECRAFT_TEST.modules
+    assert(type(modules) == "table", "subsystem module exports missing")
+    for _, name in ipairs({ "blocks", "sounds", "physics", "camera", "hud", "model" }) do
+        assert(type(modules[name]) == "table", "missing module: " .. name)
+    end
+
+    local sounds = modules.sounds
+    assert(sounds.load() == true, "sound samples did not load")
+    local expected_samples = {
+        "sounds/stone_step.ogg", "sounds/dirt_step.ogg", "sounds/grass_step.ogg",
+        "sounds/wood_step.ogg", "sounds/block_place.ogg", "sounds/block_break.ogg",
+    }
+    for _, path in ipairs(expected_samples) do
+        assert(audio_samples[path] ~= nil, "missing original SteveCraft sound: " .. path)
+    end
+
+    local physics = modules.physics
+    local walker = {
+        action = ACT_FLAG_MOVING,
+        forwardVel = 5,
+        floor = {},
+        pos = { x = 0, y = 0, z = 0 },
+        vel = { y = 0 },
+    }
+    gGlobalTimer = 700
+    local state_name = physics.update(walker, sounds, function() return "wood" end)
+    assert(state_name == "move", "movement adapter did not detect walking")
+    assert(#audio_events == 1, "footstep sound did not fire exactly once")
+    assert(audio_events[1].sample.path == "sounds/wood_step.ogg", "wrong material footstep sound")
+    physics.update(walker, sounds, function() return "wood" end)
+    assert(#audio_events == 1, "footstep cadence played twice in one frame")
+
+    sounds.play_place("minecraft:stone", walker.pos)
+    sounds.play_break("minecraft:dirt", walker.pos)
+    assert(audio_events[#audio_events - 1].sample.path == "sounds/block_place.ogg")
+    assert(audio_events[#audio_events].sample.path == "sounds/block_break.ogg")
+    print("PASS: separate modules and original block/footstep sound playback")
+end
+
+test_separated_modules_and_audio()
 test_model_asset_registration()
 print("SteveCraft build-system validation passed.")
