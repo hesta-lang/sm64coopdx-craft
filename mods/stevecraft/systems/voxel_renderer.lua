@@ -246,12 +246,18 @@ local function build_mesh(block_id, face_shading, mesh_key, visible_faces)
         gfx = gfx,
         vtx = vtx,
         command_count = command_count,
-        vertex_count = 24,
+        vertex_count = requested_vertices,
+        face_count = #visible_faces,
+        face_signature = nil,
         shade_signature = nil,
     }
     return mesh
 end
 
+
+local function grid_key(x, y, z)
+    return tostring(x) .. "," .. tostring(y) .. "," .. tostring(z)
+end
 
 local function visible_faces_for_block(blocks, x, y, z)
     local visible = {}
@@ -277,10 +283,6 @@ local function face_signature(visible_faces)
         parts[#parts + 1] = tostring(entry.shading_index)
     end
     return table.concat(parts, ",")
-end
-
-local function grid_key(x, y, z)
-    return tostring(x) .. "," .. tostring(y) .. "," .. tostring(z)
 end
 
 local function block_ao_brightness(blocks, x, y, z)
