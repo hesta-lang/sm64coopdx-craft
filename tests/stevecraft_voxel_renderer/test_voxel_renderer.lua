@@ -167,6 +167,8 @@ assert(#culled_faces == 5, "shared face was not removed from the exposed-face li
 assert(culled_faces[1].shading_index ~= 1, "front face remained visible against a neighbour")
 assert(Renderer.attach(stone, "minecraft:stone", one_neighbour),
     "mesh could not be rebuilt for a local block edit")
+current_object = stone
+hooks[HOOK_BEFORE_GEO_PROCESS](node, 0)
 stone_mesh = Renderer.get_mesh("minecraft:stone")
 assert(stone_mesh.face_count == 5 and stone_mesh.vertex_count == 20,
     "face-culling did not reduce a cube to five faces / 20 vertices")
