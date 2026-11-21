@@ -627,8 +627,8 @@ local function test_separated_modules_and_audio()
 
     sounds.play_place("minecraft:stone", walker.pos)
     sounds.play_break("minecraft:dirt", walker.pos)
-    assert(audio_events[audio_baseline + 2].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
-    assert(audio_events[audio_baseline + 3].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
+    assert(audio_events[audio_baseline + 3].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
+    assert(audio_events[audio_baseline + 4].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
     print("PASS: separate modules and original block/footstep sound playback")
 end
 
