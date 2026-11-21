@@ -10,6 +10,7 @@ on:
     paths:
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
       - "mods/stevecraft/main.lua"
+      - "mods/stevecraft/*.lua"
       - "mods/stevecraft/README.md"
       - "mods/stevecraft/ENGINEERING_REVERSE_NOTES.md"
       - "tests/stevecraft_animation/**"
@@ -24,6 +25,7 @@ on:
     paths:
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
       - "mods/stevecraft/main.lua"
+      - "mods/stevecraft/*.lua"
       - "mods/stevecraft/README.md"
       - "mods/stevecraft/ENGINEERING_REVERSE_NOTES.md"
       - "tests/stevecraft_animation/**"
@@ -65,41 +67,60 @@ jobs:
 
       - name: Validate Lua syntax
         run: |
-          luac5.4 -p mods/stevecraft/main.lua
-          find mods/stevecraft/systems -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
+          for file in mods/stevecraft/*.lua mods/stevecraft/systems/*.lua; do
+            luac5.4 -p "$file"
+          done
 
-      - name: Validate original Steve actor asset and construction runtime
+      - name: Validate Steve model payload and construction runtime
         run: |
           python3 - <<'PY'
+          import base64
           import hashlib
           import pathlib
 
-          actor = pathlib.Path("mods/stevecraft/actors/minecraft_steve_geo.bin").read_bytes()
+          actor_path = pathlib.Path("mods/stevecraft/actors/minecraft_steve_geo.bin")
+          actor = actor_path.read_bytes()
+          model_source = pathlib.Path("mods/stevecraft/model.lua").read_text(encoding="utf-8")
+          marker = "local STEVE_GEO_BASE64 = [["
+          start = model_source.find(marker)
+          if start < 0:
+              raise SystemExit("Embedded Steve DYNOSBIN payload is missing from model.lua.")
+          start += len(marker)
+          end = model_source.find("]]", start)
+          if end < 0:
+              raise SystemExit("Embedded Steve DYNOSBIN payload is unterminated.")
+          encoded = "".join(model_source[start:end].split())
+          embedded = base64.b64decode(encoded, validate=True)
           if not actor.startswith(b"DYNOSBIN"):
-              raise SystemExit("Steve actor is not a valid DYNOSBIN asset.")
-          if len(actor) < 1024:
-              raise SystemExit("Steve actor file is unexpectedly small.")
+              raise SystemExit("Steve actor file has an invalid DYNOSBIN header.")
+          if embedded != actor:
+              raise SystemExit("Embedded Steve model payload differs from actors/minecraft_steve_geo.bin.")
 
-          source = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
+          for marker in ("STEVE_GEO_ASSET_REVISION", "mod_fs_create", "MOD_FS_URI_FORMAT"):
+              if marker not in model_source:
+                  raise SystemExit(f"Model loader is missing required marker: {marker}")
+
+          main = pathlib.Path("mods/stevecraft/main.lua").read_text(encoding="utf-8")
           required = (
               'local STEVECRAFT_VERSION = "0.4.2-alpha"',
+              'stevecraft_load_module("model", "model")',
               "Blocks.spawn_once(",
               "GRID_MAX_BLOCKS_PER_AREA = 128",
               "HOOK_MARIO_UPDATE",
               "HOOK_ON_HUD_RENDER",
               "HUD.render(",
           )
-          missing = [marker for marker in required if marker not in source]
+          missing = [marker for marker in required if marker not in main]
           if missing:
               raise SystemExit("Missing SteveCraft runtime markers: " + ", ".join(missing))
 
           print(
-              "Steve DYNOSBIN asset validated: "
+              "Steve model payload verified: "
               f"{len(actor)} bytes, SHA-256 {hashlib.sha256(actor).hexdigest()}"
           )
-          print("Construction grid, placement deduplication, and HUD hooks are present.")
+          print("Model loader, construction grid, placement guard, and HUD hooks are present.")
           PY
-          if grep -q 'smlua_model_util_get_id("mario_geo")' mods/stevecraft/main.lua; then
+          if grep -q 'smlua_model_util_get_id("mario_geo")' mods/stevecraft/model.lua; then
             echo "Unsafe built-in Mario fallback is still present."
             exit 1
           fi
@@ -113,7 +134,7 @@ jobs:
       - name: Package standalone mod and engineering notes
         run: |
           cd mods/stevecraft
-          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.2-alpha.zip" main.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
+          zip -r "$GITHUB_WORKSPACE/SteveCraft-0.4.2-alpha.zip" main.lua model.lua blocks.lua camera.lua hud.lua physics.lua sounds.lua README.md ENGINEERING_REVERSE_NOTES.md actors/minecraft_steve_geo.bin systems assets
 
       - name: Verify package contents
         run: |
