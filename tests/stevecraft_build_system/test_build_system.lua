@@ -625,10 +625,22 @@ local function test_separated_modules_and_audio()
     assert(state_name == "move", "grounded forward movement fallback was not detected")
     assert(#audio_events == audio_baseline + 2, "fallback Minecraft footstep did not play")
 
+    -- Last-resort Android fallback: no floor pointer, no moving action flag and
+    -- zero velocity, but actual horizontal position displacement is measurable.
+    fallback_walker.forwardVel = 0
+    fallback_walker.floor = nil
+    fallback_walker.pos = { x = 5, y = 0, z = 0 }
+    gGlobalTimer = 728
+    state_name = physics.update(fallback_walker, sounds, function() return "grass" end)
+    assert(state_name == "move", "position-delta movement fallback was not detected")
+    assert(#audio_events == audio_baseline + 3, "position-delta Minecraft footstep did not play")
+    assert(audio_events[audio_baseline + 3].sample.path == "modfs:/stevecraft/assets/sounds/grass_step.ogg",
+        "position-delta fallback selected the wrong material sound")
+
     sounds.play_place("minecraft:stone", walker.pos)
     sounds.play_break("minecraft:dirt", walker.pos)
-    assert(audio_events[audio_baseline + 3].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
-    assert(audio_events[audio_baseline + 4].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
+    assert(audio_events[audio_baseline + 4].sample.path == "modfs:/stevecraft/assets/sounds/stone_place.ogg")
+    assert(audio_events[audio_baseline + 5].sample.path == "modfs:/stevecraft/assets/sounds/dirt_break.ogg")
     print("PASS: separate modules and original block/footstep sound playback")
 end
 
