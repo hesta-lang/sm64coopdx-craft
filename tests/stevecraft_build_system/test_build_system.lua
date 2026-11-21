@@ -1,5 +1,9 @@
+package.path = "mods/stevecraft/?.lua;" .. package.path
+
 local storage = {}
 local spawned = {}
+local sync_spawn_calls = 0
+local local_spawn_calls = 0
 local hooks = {}
 local behavior = nil
 local collision_calls = 0
@@ -83,6 +87,7 @@ gNetworkPlayers = {
 }
 gCurrLevelNum = 1
 gCurrAreaIndex = 1
+gGlobalTimer = 1
 gGlobalObjectCollisionData = {
     breakable_box_seg8_collision_08012D70 = 777,
 }
@@ -113,12 +118,17 @@ end
 
 function hook_behavior(_, object_list, synchronized, init_callback, loop_callback)
     assert(object_list == OBJ_LIST_SURFACE, "block behavior must live in the surface object list")
-    assert(synchronized == true, "grid behavior must be eligible for network synchronization")
+    assert(synchronized == false, "local persistent grid must not register a synchronized behavior")
     behavior = { init = init_callback, loop = loop_callback }
     return 900
 end
 
-function spawn_sync_object(behavior_id, model_id, x, y, z, initialize)
+function spawn_sync_object(...)
+    sync_spawn_calls = sync_spawn_calls + 1
+    error("local persisted blocks must not use the network-synchronized spawn path")
+end
+
+function spawn_non_sync_object(behavior_id, model_id, x, y, z, initialize)
     assert(behavior_id == 900, "unexpected behavior ID")
     assert(model_id == E_MODEL_BREAKABLE_BOX, "unexpected block placeholder model")
     local object = {
@@ -128,11 +138,8 @@ function spawn_sync_object(behavior_id, model_id, x, y, z, initialize)
     if initialize then initialize(object) end
     behavior.init(object)
     spawned[#spawned + 1] = object
+    local_spawn_calls = local_spawn_calls + 1
     return object
-end
-
-function spawn_non_sync_object(...)
-    error("non-sync fallback should not be used when sync spawn succeeds")
 end
 
 function obj_scale(object, scale)
@@ -215,6 +222,8 @@ local function test_world_load_and_collision()
     assert(cell.object.scale == build.constants.object_scale)
     assert(cell.object.oCollisionDistance > 0)
     assert(cell.object.oDrawingDistance > 0)
+    assert(#spawned == 1 and local_spawn_calls == 1, "one placement created more than one object")
+    assert(sync_spawn_calls == 0, "grid attempted a second synchronized spawn path")
 
     local duplicate = build.place_grid_block(0, 0, 1)
     assert(duplicate == false, "occupied cell accepted a second block")
@@ -277,6 +286,17 @@ local function test_hotbar_and_input()
     build.handle_build_input(m)
     assert(state().build_height_offset == 1)
     assert((m.controller.buttonPressed & U_JPAD) == 0)
+
+    -- Simulate duplicate A press callbacks in the same engine frame.
+    gGlobalTimer = 300
+    m.controller.buttonDown = L_TRIG | A_BUTTON
+    m.controller.buttonPressed = A_BUTTON
+    build.handle_build_input(m)
+    local after_first = state().block_count
+    m.controller.buttonPressed = A_BUTTON
+    build.handle_build_input(m)
+    assert(state().block_count == after_first, "same-frame duplicate A event created a second block")
+    assert(sync_spawn_calls == 0, "input handler used synchronized spawning")
 
     m.controller.buttonDown = 0
     m.controller.buttonPressed = 0
@@ -478,9 +498,10 @@ local function test_model_asset_registration()
         local name, value = debug.getupvalue(update_function, index)
         captured[name] = value
     end
-    assert(type(captured.update_steve_health) == "function", "player update lost its local health callback")
-    assert(type(captured.ensure_first_person_camera) == "function", "player update lost its local camera callback")
-    print("PASS: embedded DYNOSBIN import and captured player callbacks")
+    assert(type(captured.Camera) == "table", "player update did not bind the camera module")
+    assert(type(captured.Physics) == "table", "player update did not bind the physics module")
+    assert(type(captured.Model) == "table", "player update did not bind the model module")
+    print("PASS: embedded DYNOSBIN import and modular player callbacks")
 end
 
 test_model_asset_registration()
