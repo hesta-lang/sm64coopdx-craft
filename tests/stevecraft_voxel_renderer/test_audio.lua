@@ -35,6 +35,7 @@ MOD_AUDIO_CHANNEL_SFX = 3
 gGlobalTimer = 1
 function mod_fs_get() return { modPath = "SteveCraft" } end
 local fail_one_sample_once = true
+local pending_dirt_sample = nil
 local loaded_samples = {}
 local played_samples = {}
 function audio_sample_load(uri)
@@ -43,6 +44,11 @@ function audio_sample_load(uri)
     if fail_one_sample_once and uri:match("/stone_step%.ogg$") then
         fail_one_sample_once = false
         return nil
+    end
+    if uri:match("/dirt_step%.ogg$") then
+        pending_dirt_sample = { filepath = uri, loaded = false }
+        loaded_samples[uri] = pending_dirt_sample
+        return pending_dirt_sample
     end
     local sample = { filepath = uri, loaded = true }
     loaded_samples[uri] = sample
@@ -62,6 +68,11 @@ gGlobalTimer = 121
 assert(Sounds.load() == true, "ModAudio retry did not load the missing sample")
 local stone_sample = loaded_samples["modfs:/SteveCraft/assets/sounds/stone_step.ogg"]
 assert(stone_sample ~= nil, "stone footstep sample was not retried")
+assert(pending_dirt_sample ~= nil and pending_dirt_sample.loaded == false,
+    "test did not simulate an asynchronously loading audio object")
+pending_dirt_sample.loaded = true
+gGlobalTimer = 241
+assert(Sounds.load() == true, "ModAudio did not detect a previously pending sample becoming ready")
 assert(stone_sample.channel == MOD_AUDIO_CHANNEL_SFX,
     "Minecraft footstep sample was not assigned to the SFX channel")
 assert(stone_sample.baseVolume == 1.0, "Minecraft footstep base volume was not initialized")
