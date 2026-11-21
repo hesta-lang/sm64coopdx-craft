@@ -1,7 +1,40 @@
-# SteveCraft 0.4.2-alpha — Steve proxy, first-person prototype, and voxel build system
+# SteveCraft 0.4.3-alpha — Steve proxy, first-person prototype, and voxel build system
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
+
+## Native C engine bridge (0.4.3-alpha)
+
+This release keeps SteveCraft as an independent mod ZIP. It does not ship a
+custom `.so`, modify the SM64CoopDX executable, or require a rebuilt APK.
+
+The normal production mod loader exposes the engine's compiled C functions to
+Lua, but it does not provide a supported mechanism for loading an arbitrary
+C/C++ gameplay library from a mod. New C code that replaces the engine's player
+physics would therefore require changing and rebuilding the game executable,
+which would break the independent-mod requirement.
+
+Instead, `systems/native_engine.lua` centralizes access to the C features
+already present in SM64CoopDX:
+
+- First-person camera control and camera state (`set_first_person_enabled`,
+  `get_first_person_enabled`, `first_person_reset`, `gFirstPersonCamera`).
+- Native surface and floor collision queries
+  (`collision_find_surface_on_ray`, `collision_find_floor`).
+- Native angle functions (`sins`, `coss`) and the engine-owned `MarioState`
+  position, velocity, action and floor data.
+- The engine's object collision, dynamic surface and audio paths.
+
+This is an engine-C-backed integration, **not a new C physics implementation**.
+SM64CoopDX still calculates gravity, acceleration, friction, jumping and
+collision response. SteveCraft reads that native state and applies Minecraft
+presentation and construction logic in Lua. Replacing those movement equations
+with Minecraft Java physics while remaining a standalone mod is not supported
+by the current public mod-loading interface.
+
+Block placement input is now edge-latched so repeated touch/controller
+`buttonPressed` events during one held press cannot place another block.
+A fresh press after release is accepted normally.
 
 ## Player and model registration
 
