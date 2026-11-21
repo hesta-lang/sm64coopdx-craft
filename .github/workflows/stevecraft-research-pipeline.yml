@@ -10,7 +10,10 @@ on:
       - "tools/minecraft_java_runtime_probe/**"
       - "tools/stevecraft_rig_audit/**"
       - "tests/stevecraft_rig_audit/**"
+      - "tests/stevecraft_animation/**"
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
+      - "mods/stevecraft/main.lua"
+      - "mods/stevecraft/README.md"
       - ".github/workflows/stevecraft-research-pipeline.yml"
   pull_request:
     branches:
@@ -21,7 +24,10 @@ on:
       - "tools/minecraft_java_runtime_probe/**"
       - "tools/stevecraft_rig_audit/**"
       - "tests/stevecraft_rig_audit/**"
+      - "tests/stevecraft_animation/**"
       - "mods/stevecraft/actors/minecraft_steve_geo.bin"
+      - "mods/stevecraft/main.lua"
+      - "mods/stevecraft/README.md"
       - ".github/workflows/stevecraft-research-pipeline.yml"
   workflow_dispatch:
     inputs:
@@ -286,3 +292,31 @@ jobs:
           path: ${{ runner.temp }}/stevecraft-rig-audit.json
           if-no-files-found: error
           retention-days: 7
+
+  validate-steve-animations:
+    name: Validate formula-generated Steve idle and walk animations
+    needs:
+      - audit-steve-geometry
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lua 5.4
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+
+      - name: Validate mod Lua syntax
+        run: luac5.4 -p mods/stevecraft/main.lua
+
+      - name: Run animation formula and channel-layout tests
+        run: lua5.4 tests/stevecraft_animation/test_animation.lua
+
+      - name: Validate registered animation API and 20-part channel contract
+        run: |
+          grep -q "smlua_anim_util_register_animation" mods/stevecraft/main.lua
+          grep -q "smlua_anim_util_set_animation" mods/stevecraft/main.lua
+          grep -q "STEVE_ANIMATION_PARTS = 20" mods/stevecraft/main.lua
+          grep -q "0x40" mods/stevecraft/main.lua
+          echo "SM64CoopDX custom animation API and no-root-translation contract found."
