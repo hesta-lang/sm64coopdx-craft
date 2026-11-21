@@ -645,6 +645,9 @@ function Renderer.attach_surface_mask(object, snapshot)
     if key == nil then return false end
     local signature = snapshot and snapshot.signature or nil
     if signature == nil then return false end
+    if surface_masks[key] == signature and object_ready[key] == true then
+        return true
+    end
 
     local mesh_key = signature:gsub("[^%w_]", "_")
     local mesh = build_surface_mask_mesh(mesh_key, snapshot)
@@ -673,6 +676,7 @@ function Renderer.detach(object)
     if key == nil then return false end
     object_blocks[key] = nil
     object_ready[key] = nil
+    surface_masks[key] = nil
     meshes[key] = nil
     return true
 end
