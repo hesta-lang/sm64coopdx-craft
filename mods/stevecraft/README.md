@@ -1,4 +1,4 @@
-# SteveCraft 0.4.5-alpha — material footsteps, grid-locked blocks, and repaired HUD
+# SteveCraft 0.4.6-alpha — Minecraft audio, pixel textures, X placement, and scene reset
 
 SteveCraft is an independent Lua mod for SM64CoopDX. It is distributed as a
 standalone mod ZIP; it does not alter or repackage the Android APK.
@@ -32,9 +32,10 @@ presentation and construction logic in Lua. Replacing those movement equations
 with Minecraft Java physics while remaining a standalone mod is not supported
 by the current public mod-loading interface.
 
-Block placement input is now edge-latched so repeated touch/controller
-`buttonPressed` events during one held press cannot place another block.
-A fresh press after release is accepted normally.
+Block placement is assigned to **X** and is edge-latched, so repeated
+touch/controller `buttonPressed` events during one held press cannot place
+another block. L is no longer required to place blocks; L+B remains the mining
+combination.
 
 ## Player and model registration
 
@@ -85,19 +86,20 @@ touch controls or verify the rendered camera image.
 The system has a nine-slot hotbar with 64 starter items per slot. Inventory and
 the current selection persist per save slot.
 
-Controls while holding **L**:
+Controls:
 
 | Input | Action |
 |---|---|
+| X | Place the selected block at the crosshair target |
 | L + D-pad Left / Right | Select hotbar slot |
 | L + D-pad Up / Down | Raise / lower construction layer |
-| L + A | Place the selected block at the crosshair target |
 | Hold L + B | Mine the targeted placed block |
 
-The grid is per save slot, level, and area. It uses 90 SM64 world units per
-cell, a maximum of 128 blocks per area, chunked Mod Storage records, and
-dynamic surface objects that load collision through
-`load_object_collision_model()`.
+Blocks are temporary and scene-local. Starting a new level, changing area,
+warping, or loading a different save/scene clears all previous placed blocks.
+The inventory remains saved per save slot. The active grid uses 90 SM64 world
+units per cell, a maximum of 128 blocks, and dynamic surface objects that load
+collision through `load_object_collision_model()`.
 
 ### Current block limitations
 
@@ -111,16 +113,17 @@ dynamic surface objects that load collision through
 - Block PNGs, HUD sprites and OGG samples are embedded by GitHub Actions as a
   Lua Base64 manifest, then written to ModFS through the game's own API. This
   avoids depending on production Lua builds exposing `io.open`.
-- Native Mario ground-step sound requests are filtered through
-  `HOOK_ON_PLAY_SOUND`; only footstep sound IDs are replaced. Jump, landing,
-  slide, voice and world sounds remain untouched. SteveCraft plays the Java
-  sample selected from the voxel or host-terrain material.
+- Native action-bank sounds (including Mario footsteps, jumps, landings and
+  acrobatics) and the Mario voice bank are muted through `HOOK_ON_PLAY_SOUND`.
+  Environmental, object and menu banks are left active. SteveCraft plays the
+  Java step sample based on the voxel or host-terrain material while walking.
 - Every placed block is snapped to the exact center of its 90-unit grid cell.
   Pitch, yaw, roll and angular velocity are reset on spawn and every object
   update, so grid blocks do not inherit an incline or drift off the lattice.
-- The HUD now requests the real embedded paths under
-  `textures/gui/sprites/hud/` and renders individual sprites. It no longer
-  requests the nonexistent `textures/hud/` folder or an unbundled atlas.
+- The HUD rejects non-power-of-two textures before calling DJUI, avoiding
+  the reported `MPOT width or height` script error. The hotbar and selector are
+  drawn with pixel rectangles; inventory block icons use the block texture with
+  shaded right/bottom extrusion for a Minecraft-like cube appearance.
 - The catalogue includes Java 26.3 destroy speed, explosion resistance,
   friction, and sound-event IDs. Mining time uses a simple prototype scaling
   based on destroy speed; tool tiers and Java's complete breaking-speed
@@ -160,12 +163,12 @@ GitHub Actions checks:
 - Runtime Gfx/Vtx mesh construction, per-object GeoLayout pointer swapping,
   glass transparency layer selection, and restoration of the vanilla model.
 - Binary resource embedding and Base64 decoding for production ModFS import.
-- Mario step-sound filtering, material-to-Minecraft-audio selection,
-  zero-rotation grid transforms and exact embedded HUD resource paths.
+- Mario action/voice-bank suppression, material-to-Minecraft-audio selection,
+  zero-rotation grid transforms, MPOT-safe HUD rendering and X placement.
 - Embedded DYNOSBIN byte count/header and ModFS import/URI resolution using a
   mocked ModFS API.
 - Grid coordinate math, inventory accounting, placement/removal, dynamic
-  collision callbacks, persistence, chunk limits and per-area reload.
+  collision callbacks, temporary scene cleanup, and active-grid chunk limits.
 - First-person camera setup, camera-ray direction, voxel DDA targeting,
   crosshair/HUD rendering, heart mapping and damage thresholds.
 - Read-only GeoLayout checks against the original actor binary and Java 26.3
