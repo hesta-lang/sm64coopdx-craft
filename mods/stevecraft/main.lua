@@ -3,7 +3,7 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.4.2-alpha"
+local STEVECRAFT_VERSION = "0.4.3-alpha"
 
 -- Resolve modules relative to this mod instead of depending on the host's
 -- current working directory or a globally configured Lua package.path.
@@ -43,6 +43,7 @@ end
 -- The gameplay modules are sibling files of main.lua. The asset installer is
 -- the only module in the systems/ subdirectory.
 local Assets = stevecraft_load_module("systems/assets", "systems/assets")
+local Native = stevecraft_load_module("systems/native_engine", "systems/native_engine")
 local Blocks = stevecraft_load_module("blocks", "blocks")
 local Sounds = stevecraft_load_module("sounds", "sounds")
 local Physics = stevecraft_load_module("physics", "physics")
@@ -664,6 +665,7 @@ end
 
 
 local sLastPlaceFrame = nil
+local sPlaceButtonLatched = false
 
 local function consume_build_controls(m)
     if not m or m.playerIndex ~= 0 or not m.controller then return end
@@ -672,7 +674,12 @@ local function consume_build_controls(m)
     local controller = m.controller
     local down = controller.buttonDown or 0
     local pressed = controller.buttonPressed or 0
+    local released = controller.buttonReleased or 0
+    if (released & A_BUTTON) ~= 0 or ((down & A_BUTTON) == 0 and (pressed & A_BUTTON) == 0) then
+        sPlaceButtonLatched = false
+    end
     if (down & L_TRIG) == 0 then
+        sPlaceButtonLatched = false
         sMiningCellKey = nil
         sMiningFrames = 0
         sMiningRequiredFrames = 0
@@ -698,17 +705,22 @@ local function consume_build_controls(m)
     end
 
     if (pressed & A_BUTTON) ~= 0 then
-        local frame = tonumber(gGlobalTimer) or -1
-        if frame < 0 or frame ~= sLastPlaceFrame then
-            sLastPlaceFrame = frame
-            local x, y, z = get_build_target(m, "place")
-            if x then
-                local placed, reason = place_grid_block(x, y, z)
-                if not placed then
-                    print("[SteveCraft] Cannot place block: " .. tostring(reason))
+        -- Some touch/controller paths can repeat buttonPressed across frames
+        -- while the same press is still held. Accept only its first edge.
+        if not sPlaceButtonLatched then
+            sPlaceButtonLatched = true
+            local frame = tonumber(gGlobalTimer) or -1
+            if frame < 0 or frame ~= sLastPlaceFrame then
+                sLastPlaceFrame = frame
+                local x, y, z = get_build_target(m, "place")
+                if x then
+                    local placed, reason = place_grid_block(x, y, z)
+                    if not placed then
+                        print("[SteveCraft] Cannot place block: " .. tostring(reason))
+                    end
+                else
+                    print("[SteveCraft] No surface or voxel in the crosshair range.")
                 end
-            else
-                print("[SteveCraft] No surface or voxel in the crosshair range.")
             end
         end
         consumed = consumed | A_BUTTON
@@ -791,6 +803,8 @@ local function on_warp()
     sMiningCellKey = nil
     sMiningFrames = 0
     sMiningRequiredFrames = 0
+    sPlaceButtonLatched = false
+    sLastPlaceFrame = nil
     deactivate_world_objects()
     sCurrentWorldKey = nil
     sCurrentWorldPrefix = nil
@@ -812,6 +826,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         camera = Camera,
         hud = HUD,
         model = Model,
+        native_engine = Native,
     }
     __STEVECRAFT_TEST.camera = {
         ensure_first_person_camera = Camera.ensure,
@@ -848,6 +863,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         get_behavior_id = function() return sGridBlockBehaviorId end,
         render_inventory = render_build_inventory,
         handle_build_input = consume_build_controls,
+        is_place_button_latched = function() return sPlaceButtonLatched end,
     }
     return
 end
