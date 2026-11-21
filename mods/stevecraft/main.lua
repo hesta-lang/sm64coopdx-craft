@@ -4,6 +4,7 @@
 -- pausable: true
 
 local STEVECRAFT_VERSION = "0.4.2-alpha"
+local Assets = require("assets")
 local Blocks = require("blocks")
 local Sounds = require("sounds")
 local Physics = require("physics")
@@ -798,6 +799,7 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
     return
 end
 
+Assets.import_all()
 Sounds.load()
 
 -- Native Mario movement is retained. The invisible per-area grid creates real surface objects.
