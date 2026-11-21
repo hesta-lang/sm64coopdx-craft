@@ -6,6 +6,51 @@ local collision_calls = 0
 local hud_lines = {}
 local hud_rect_calls = 0
 
+local modfs_file = nil
+local modfs_saved = false
+local modfs = { modPath = "stevecraft" }
+
+function modfs:get_file(path)
+    assert(path == "actors/minecraft_steve_geo.bin", "unexpected ModFS actor path")
+    return modfs_file
+end
+
+function modfs:create_file(path, is_text)
+    assert(path == "actors/minecraft_steve_geo.bin", "unexpected ModFS actor path")
+    assert(is_text == false, "DynOS actor must be stored as binary")
+    modfs_file = { size = 0, bytes = "", isText = is_text }
+    function modfs_file:set_text_mode(value) self.isText = value; return true end
+    function modfs_file:erase(count)
+        self.bytes = self.bytes:sub(math.min(#self.bytes + 1, count + 1))
+        self.size = #self.bytes
+        return true
+    end
+    function modfs_file:rewind() self.offset = 0; return true end
+    function modfs_file:write_bytes(value)
+        self.bytes = value
+        self.size = #value
+        return true
+    end
+    return modfs_file
+end
+
+function modfs:save()
+    modfs_saved = true
+    return true
+end
+
+function mod_fs_get() return modfs end
+function mod_fs_create() error("existing ModFS should be reused") end
+
+local model_lookup_names = {}
+function smlua_model_util_get_id(name)
+    model_lookup_names[#model_lookup_names + 1] = name
+    if name == "modfs:/stevecraft/actors/minecraft_steve_geo.bin" then
+        return 321
+    end
+    return E_MODEL_ERROR_MODEL
+end
+
 local function copy(source)
     local result = {}
     for k, v in pairs(source) do result[k] = v end
@@ -115,6 +160,7 @@ dofile("mods/stevecraft/main.lua")
 
 local animation = __STEVECRAFT_TEST.build_animation
 local build = __STEVECRAFT_TEST.build_system
+local model = __STEVECRAFT_TEST.model
 assert(type(animation) == "function", "animation generator export missing")
 assert(type(build) == "table", "build system export missing")
 assert(type(behavior) == "table", "custom surface behavior was not registered")
@@ -405,5 +451,27 @@ local function test_first_person_camera_and_voxel_ray()
     print("PASS: first-person setup, center-camera ray, voxel DDA, hearts, damage mapping, and hardness timing")
 end
 
+
 test_first_person_camera_and_voxel_ray()
+
+local function test_model_asset_registration()
+    assert(type(model) == "table", "model registration export missing")
+    local bytes = model.get_actor_binary()
+    assert(type(bytes) == "string", "embedded DYNOSBIN did not decode")
+    assert(#bytes == model.expected_binary_size, "embedded actor size mismatch")
+    assert(bytes:sub(1, 8) == "DYNOSBIN", "embedded actor header is invalid")
+
+    local uri = model.ensure_actor_in_modfs()
+    assert(uri == "modfs:/stevecraft/actors/minecraft_steve_geo.bin", "wrong ModFS actor URI")
+    assert(modfs_file ~= nil and modfs_file.bytes == bytes, "original actor bytes were not copied to ModFS")
+    assert(modfs_saved == true, "ModFS actor was not saved")
+
+    local model_id = model.load_actor()
+    assert(model_id == 321, "Steve model did not resolve from the ModFS URI")
+    assert(#model_lookup_names == 1, "loader attempted a fallback model name")
+    assert(model_lookup_names[1] == uri, "loader resolved a built-in symbol instead of the mod actor")
+    print("PASS: embedded DYNOSBIN import and explicit ModFS actor lookup")
+end
+
+test_model_asset_registration()
 print("SteveCraft build-system validation passed.")
