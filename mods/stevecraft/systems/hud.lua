@@ -19,7 +19,7 @@ function M.layout(width, height)
         hearts = { x = left + 9 * scale, y = top + 135 * scale, count = 10, step = 8 * scale },
         armor = { x = left + 9 * scale, y = top + 125 * scale, count = 10, step = 8 * scale },
         hunger = { x = left + 231 * scale, y = top + 135 * scale, count = 10, step = 8 * scale },
-        experience = { x = left + 65 * scale, y = top + 151 * scale, w = 190 * scale, h = 5 * scale },
+        experience = { x = hotbar_x, y = top + 151 * scale, w = 182 * scale, h = 5 * scale },
         crosshair = { x = left + 152.5 * scale, y = top + 82.5 * scale, w = 15 * scale, h = 15 * scale },
     }
 end
@@ -66,8 +66,9 @@ function M.render(context)
     render_texture(textures.hotbar, layout.hotbar.x, layout.hotbar.y, layout.hotbar.w, layout.hotbar.h)
     render_texture(textures.hotbar_selection, layout.selected.x + (math.max(1, math.min(9, context.selected_slot or 1)) - 1) * 20 * layout.scale, layout.selected.y, layout.selected.w, layout.selected.h)
 
-    render_texture(textures.hotbar_offhand_left, layout.offhand_left.x, layout.offhand_left.y, layout.offhand_left.w, layout.offhand_left.h)
-    render_texture(textures.hotbar_offhand_right, layout.offhand_right.x, layout.offhand_right.y, layout.offhand_right.w, layout.offhand_right.h)
+    local offhand = context.offhand_side == "right" and textures.hotbar_offhand_right or textures.hotbar_offhand_left
+    local offhand_slot = context.offhand_side == "right" and layout.offhand_right or layout.offhand_left
+    render_texture(offhand, offhand_slot.x, offhand_slot.y, offhand_slot.w, offhand_slot.h)
     if textures.experience_background ~= nil then
         render_texture(textures.experience_background, layout.experience.x, layout.experience.y, layout.experience.w, layout.experience.h)
         local progress = math.max(0, math.min(1, tonumber(context.experience_progress) or 0))
