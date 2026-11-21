@@ -474,7 +474,8 @@ place_grid_block = function(x, y, z, ...)
     if placed then
         local cell = sWorldBlocks[cell_key(x, y, z)]
         if cell ~= nil then
-            stevecraft_play_block_sound("place", cell.id, { x = cell.x, y = cell.y, z = cell.z })
+            local px, py, pz = cell_center(x, y, z)
+            stevecraft_play_block_sound("place", cell.id, { x = px, y = py, z = pz })
         end
     end
     return placed, reason
@@ -515,7 +516,10 @@ remove_grid_block = function(x, y, z, ...)
     local cell = sWorldBlocks[cell_key(x, y, z)]
     local block_id = cell and cell.id or nil
     local removed, reason = original_remove_grid_block(x, y, z, ...)
-    if removed then stevecraft_play_block_sound("break", block_id, { x = x, y = y, z = z }) end
+    if removed then
+        local px, py, pz = cell_center(x, y, z)
+        stevecraft_play_block_sound("break", block_id, { x = px, y = py, z = pz })
+    end
     return removed, reason
 end
 
