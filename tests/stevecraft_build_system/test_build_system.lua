@@ -78,6 +78,7 @@ D_JPAD = 1 << 10
 RESOLUTION_N64 = 1
 RESOLUTION_DJUI = 2
 FONT_NORMAL = 1
+MOD_FS_URI_FORMAT = "modfs:/%s/%s"
 
 gNetworkPlayers = {
     [0] = { currLevelNum = 1, currAreaIndex = 1 },
