@@ -163,7 +163,7 @@ local function apply_steve_animation(m, state)
 end
 
 -- Bedrock-inspired animation-controller pattern: observe conditions and select a state.
--- This controller is observational; it does not replace movement or play bone animations yet.
+-- It selects the formula-generated idle/walk animation without changing movement or collision.
 local function get_steve_controller_state(m)
     local action = m.action or 0
     if (action & ACT_FLAG_SWIMMING) ~= 0 then
