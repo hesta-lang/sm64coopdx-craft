@@ -3,8 +3,9 @@
 -- incompatible: none
 -- pausable: true
 
-local STEVECRAFT_VERSION = "0.3.0-alpha"
+local STEVECRAFT_VERSION = "0.4.0-alpha"
 local STEVE_GEO_NAME = "mario_geo"
+local STEVE_GEO_FILE = "actors/minecraft_steve_geo.bin"
 
 local sModelId = nil
 local sModelLoadAttempted = false
@@ -202,20 +203,37 @@ local function load_steve_model()
         return nil
     end
 
-    local ok, modelId = pcall(smlua_model_util_get_id, STEVE_GEO_NAME)
+    -- Resolve the actor by its ModFS filepath, not the generic internal name
+    -- "mario_geo". This prevents the lookup from accidentally resolving the
+    -- built-in Mario layout when the custom actor file has not been registered.
+    local lookup_name = STEVE_GEO_NAME
+    if type(mod_fs_get) == "function" and type(MOD_FS_URI_FORMAT) == "string" then
+        local mod_fs = nil
+        local fs_ok, fs_result = pcall(mod_fs_get)
+        if fs_ok then mod_fs = fs_result end
+        if mod_fs == nil and type(mod_fs_create) == "function" then
+            local create_ok, create_result = pcall(mod_fs_create)
+            if create_ok then mod_fs = create_result end
+        end
+        if mod_fs ~= nil and type(mod_fs.modPath) == "string" then
+            lookup_name = string.format(MOD_FS_URI_FORMAT, mod_fs.modPath, STEVE_GEO_FILE)
+        end
+    end
+
+    local ok, modelId = pcall(smlua_model_util_get_id, lookup_name)
     if not ok then
         print("[SteveCraft] ERROR: GeoLayout lookup raised an error: " .. tostring(modelId))
         return nil
     end
 
     if type(modelId) ~= "number" or modelId == E_MODEL_ERROR_MODEL then
-        print('[SteveCraft] ERROR: DynOS could not resolve GeoLayout symbol "' .. STEVE_GEO_NAME .. '".')
-        print("[SteveCraft] Check actor registration and the internal GeoLayout name in the .geo.bin.")
+        print('[SteveCraft] ERROR: DynOS could not resolve Steve actor "' .. lookup_name .. '".')
+        print("[SteveCraft] Verify that actors/minecraft_steve_geo.bin is present in the installed mod.")
         return nil
     end
 
     sModelId = modelId
-    print("[SteveCraft] GeoLayout resolved to extended model id=" .. tostring(modelId))
+    print("[SteveCraft] Steve actor URI resolved to extended model id=" .. tostring(modelId))
     return sModelId
 end
 
@@ -242,15 +260,17 @@ end
 
 local function apply_steve_to_mario(m)
     if m == nil or m.playerIndex ~= 0 then return end
+    update_steve_health(m)
+    ensure_first_person_camera(m)
     local state = update_steve_controller(m)
     if m.marioObj == nil then return end
 
     local modelId = load_steve_model()
     if modelId == nil then return end
-    if sModelAppliedObject == m.marioObj then
-        apply_steve_animation(m, state)
-        return
-    end
+    -- The official SM64CoopDX player-model example reapplies the extended model
+    -- on every HOOK_MARIO_UPDATE. A one-shot assignment can be overwritten by
+    -- the normal player renderer during later frames.
+    local already_applied = (sModelAppliedObject == m.marioObj)
 
     -- Calls the engine's native loader and assigns the model to the existing player object.
     local ok, result = pcall(obj_set_model_extended, m.marioObj, modelId)
@@ -273,14 +293,17 @@ local function apply_steve_to_mario(m)
     end
 
     sModelAppliedObject = m.marioObj
-    if register_steve_animations() then
+    if not already_applied and register_steve_animations() then
         sCurrentSteveAnimation = nil
-        apply_steve_animation(m, state)
     end
-    if currentId == modelId then
-        print("[SteveCraft] Steve model assigned and verified on the existing marioObj.")
-    else
-        print("[SteveCraft] Steve model assigned; read-back verification is unavailable on this build.")
+    apply_steve_animation(m, state)
+
+    if not already_applied then
+        if currentId == modelId then
+            print("[SteveCraft] Steve model assigned and verified on the existing marioObj.")
+        else
+            print("[SteveCraft] Steve model assigned; read-back verification is unavailable on this build.")
+        end
     end
 end
 
@@ -362,8 +385,12 @@ local GRID_MAX_BLOCKS_PER_AREA = 128
 local GRID_STORAGE_CHUNK_SIZE = 800
 local GRID_MAX_BUILD_HEIGHT_OFFSET = 8
 local GRID_BUILD_DISTANCE = GRID_CELL_SIZE * 1.5
+local VOXEL_RAY_REACH = GRID_CELL_SIZE * 6
 local INVENTORY_SIZE = 9
 local INVENTORY_MAX_STACK = 64
+local STEVE_HUNGER_POINTS = 20
+local STEVE_ARMOR_POINTS = 0
+local MINING_FRAMES_PER_HARDNESS = 45
 
 local sGridBlockBehaviorId = nil
 local sGridBehaviorInit = nil
@@ -379,6 +406,11 @@ local sBuildHeightOffset = 0
 local sWarnedGridCollision = false
 local sWarnedGridSpawn = false
 local sWorldBlockCount = 0
+local sFirstPersonInitialized = false
+local sFirstPersonWarningShown = false
+local sLastMarioHealth = nil
+local sMiningCellKey = nil
+local sMiningFrames = 0
 
 local function copy_table(source)
     local result = {}
@@ -835,8 +867,219 @@ local function remove_grid_block(x, y, z)
     return true
 end
 
-local function get_build_target(m)
+
+local function health_to_half_hearts(health)
+    local minimum = 0x00FF
+    local maximum = 0x0880
+    health = tonumber(health) or minimum
+    local fraction = (health - minimum) / (maximum - minimum)
+    fraction = math.max(0, math.min(1, fraction))
+    return math.max(0, math.min(20, math.floor(fraction * 20 + 0.5)))
+end
+
+local function update_steve_health(m)
+    if m == nil or m.playerIndex ~= 0 or type(m.health) ~= "number" then return end
+    local health = m.health
+    if sLastMarioHealth ~= nil and health < sLastMarioHealth then
+        local damage = sLastMarioHealth - health
+        local shake = SHAKE_SMALL_DAMAGE or 3
+        if damage >= 0x0180 then
+            shake = SHAKE_LARGE_DAMAGE or 5
+        elseif damage >= 0x00C0 then
+            shake = SHAKE_MED_DAMAGE or 4
+        end
+        if type(set_camera_shake_from_hit) == "function" then
+            pcall(set_camera_shake_from_hit, shake)
+        end
+    end
+    sLastMarioHealth = health
+end
+
+local function ensure_first_person_camera(m)
+    if type(set_first_person_enabled) ~= "function" then
+        if not sFirstPersonWarningShown then
+            print("[SteveCraft] WARNING: this SM64CoopDX build does not expose first-person camera controls.")
+            sFirstPersonWarningShown = true
+        end
+        return false
+    end
+
+    local camera = gFirstPersonCamera
+    if not sFirstPersonInitialized then
+        if type(first_person_reset) == "function" then
+            pcall(first_person_reset)
+        end
+        camera = gFirstPersonCamera
+        if camera ~= nil then
+            local facing = 0
+            if m and m.faceAngle and type(m.faceAngle.y) == "number" then
+                facing = m.faceAngle.y
+            end
+            camera.yaw = facing + 0x8000
+            camera.pitch = 0
+            camera.centerL = false
+            camera.forcePitch = false
+            camera.forceYaw = false
+            camera.forceRoll = true
+            camera.fov = 70
+        end
+        local ok, err = pcall(set_first_person_enabled, true)
+        if not ok then
+            print("[SteveCraft] ERROR: unable to enable first-person camera: " .. tostring(err))
+            return false
+        end
+        sFirstPersonInitialized = true
+        print("[SteveCraft] SM64CoopDX first-person camera enabled.")
+    elseif camera ~= nil then
+        -- L is SteveCraft's build modifier, so do not let the camera recenter
+        -- itself whenever the player holds that trigger.
+        camera.centerL = false
+        if camera.enabled ~= true then
+            pcall(set_first_person_enabled, true)
+        end
+    end
+    return true
+end
+
+local function is_first_person_active()
+    if type(get_first_person_enabled) == "function" then
+        local ok, enabled = pcall(get_first_person_enabled)
+        return ok and enabled == true
+    end
+    return gFirstPersonCamera ~= nil and gFirstPersonCamera.enabled == true
+end
+
+local function get_camera_ray(m)
+    local camera = gFirstPersonCamera
+    if camera == nil or type(camera.yaw) ~= "number" or type(camera.pitch) ~= "number" then
+        return nil
+    end
+
+    local origin = gLakituState and gLakituState.pos or nil
+    if origin == nil then
+        if m == nil or m.pos == nil then return nil end
+        origin = { x = m.pos.x, y = (m.pos.y or 0) + 120, z = m.pos.z }
+    end
+
+    local yaw_sin = type(sins) == "function" and sins(camera.yaw) or math.sin(camera.yaw * math.pi / 32768)
+    local yaw_cos = type(coss) == "function" and coss(camera.yaw) or math.cos(camera.yaw * math.pi / 32768)
+    local pitch_sin = type(sins) == "function" and sins(camera.pitch) or math.sin(camera.pitch * math.pi / 32768)
+    local pitch_cos = type(coss) == "function" and coss(camera.pitch) or math.cos(camera.pitch * math.pi / 32768)
+
+    -- Match the forward vector used by first_person_cam.c when it builds
+    -- Lakitu's focus from the camera yaw and pitch.
+    local direction = {
+        x = -pitch_cos * yaw_sin,
+        y = -pitch_sin,
+        z = -pitch_cos * yaw_cos,
+    }
+    return origin, direction
+end
+
+local function trace_voxel_ray(origin, direction, max_distance, blocks)
+    if origin == nil or direction == nil then return nil end
+    blocks = blocks or sWorldBlocks
+    max_distance = max_distance or VOXEL_RAY_REACH
+
+    local x = math.floor((origin.x or 0) / GRID_CELL_SIZE)
+    local y = math.floor((origin.y or 0) / GRID_CELL_SIZE)
+    local z = math.floor((origin.z or 0) / GRID_CELL_SIZE)
+    local previous_x, previous_y, previous_z = nil, nil, nil
+
+    local function axis_parameters(origin_value, cell, direction_value)
+        if math.abs(direction_value) < 0.000001 then
+            return math.huge, math.huge, 0
+        end
+        local step = direction_value > 0 and 1 or -1
+        local boundary = direction_value > 0 and ((cell + 1) * GRID_CELL_SIZE) or (cell * GRID_CELL_SIZE)
+        local max_value = (boundary - origin_value) / direction_value
+        local delta_value = GRID_CELL_SIZE / math.abs(direction_value)
+        return max_value, delta_value, step
+    end
+
+    local max_x, delta_x, step_x = axis_parameters(origin.x or 0, x, direction.x or 0)
+    local max_y, delta_y, step_y = axis_parameters(origin.y or 0, y, direction.y or 0)
+    local max_z, delta_z, step_z = axis_parameters(origin.z or 0, z, direction.z or 0)
+
+    for _ = 1, 64 do
+        if blocks[cell_key(x, y, z)] ~= nil then
+            return x, y, z, previous_x, previous_y, previous_z
+        end
+
+        local distance
+        if max_x <= max_y and max_x <= max_z then
+            distance = max_x
+            max_x = max_x + delta_x
+            previous_x, previous_y, previous_z = x, y, z
+            x = x + step_x
+        elseif max_y <= max_z then
+            distance = max_y
+            max_y = max_y + delta_y
+            previous_x, previous_y, previous_z = x, y, z
+            y = y + step_y
+        else
+            distance = max_z
+            max_z = max_z + delta_z
+            previous_x, previous_y, previous_z = x, y, z
+            z = z + step_z
+        end
+
+        if distance > max_distance then return nil end
+    end
+    return nil
+end
+
+local function get_world_surface_hit(origin, direction)
+    if type(collision_find_surface_on_ray) ~= "function" then return nil end
+    local dx = direction.x * VOXEL_RAY_REACH
+    local dy = direction.y * VOXEL_RAY_REACH
+    local dz = direction.z * VOXEL_RAY_REACH
+    local ok, result = pcall(
+        collision_find_surface_on_ray,
+        origin.x, origin.y, origin.z,
+        dx, dy, dz,
+        2.0
+    )
+    if not ok or result == nil or result.surface == nil or result.hitPos == nil then
+        return nil
+    end
+    return result
+end
+
+local function get_build_target(m, purpose)
     if not m or not m.pos then return nil end
+
+    if is_first_person_active() then
+        local origin, direction = get_camera_ray(m)
+        if origin ~= nil and direction ~= nil then
+            local hit_x, hit_y, hit_z, previous_x, previous_y, previous_z =
+                trace_voxel_ray(origin, direction, VOXEL_RAY_REACH, sWorldBlocks)
+
+            if purpose == "remove" then
+                if hit_x ~= nil then return hit_x, hit_y, hit_z end
+                return nil
+            end
+
+            if purpose == "place" then
+                if hit_x ~= nil then
+                    if previous_x ~= nil then return previous_x, previous_y, previous_z end
+                    return nil
+                end
+
+                local hit = get_world_surface_hit(origin, direction)
+                if hit ~= nil then
+                    local normal = hit.surface.normal or { x = 0, y = 1, z = 0 }
+                    local position = hit.hitPos
+                    return math.floor((position.x + (normal.x or 0)) / GRID_CELL_SIZE),
+                        math.floor((position.y + (normal.y or 0)) / GRID_CELL_SIZE),
+                        math.floor((position.z + (normal.z or 0)) / GRID_CELL_SIZE)
+                end
+                return nil
+            end
+        end
+    end
+
+    -- Compatibility fallback for builds without the first-person camera API.
     local yaw = 0
     if m.faceAngle and type(m.faceAngle.y) == "number" then
         yaw = m.faceAngle.y
@@ -846,6 +1089,52 @@ local function get_build_target(m)
     return compute_target_cell(m.pos, yaw, sBuildHeightOffset)
 end
 
+local function mining_frames_for_hardness(hardness)
+    if type(hardness) ~= "number" or hardness < 0 then return nil end
+    return math.max(1, math.ceil(hardness * MINING_FRAMES_PER_HARDNESS))
+end
+
+local function update_block_mining(m)
+    local x, y, z = get_build_target(m, "remove")
+    if x == nil then
+        sMiningCellKey = nil
+        sMiningFrames = 0
+        return
+    end
+
+    local key = cell_key(x, y, z)
+    local cell = sWorldBlocks[key]
+    if cell == nil then
+        sMiningCellKey = nil
+        sMiningFrames = 0
+        return
+    end
+
+    local definition = BLOCK_CATALOG[cell.id]
+    if definition == nil or definition.destroy_speed < 0 then
+        sMiningCellKey = key
+        sMiningFrames = 0
+        return
+    end
+
+    if sMiningCellKey ~= key then
+        sMiningCellKey = key
+        sMiningFrames = 0
+    end
+
+    sMiningFrames = sMiningFrames + 1
+    local required = mining_frames_for_hardness(definition.destroy_speed)
+    if required ~= nil and sMiningFrames >= required then
+        local removed, reason = remove_grid_block(x, y, z)
+        if not removed then
+            print("[SteveCraft] Cannot mine block: " .. tostring(reason))
+        end
+        sMiningCellKey = nil
+        sMiningFrames = 0
+    end
+end
+
+
 local function consume_build_controls(m)
     if not m or m.playerIndex ~= 0 or not m.controller then return end
     ensure_world_loaded()
@@ -853,7 +1142,11 @@ local function consume_build_controls(m)
     local controller = m.controller
     local down = controller.buttonDown or 0
     local pressed = controller.buttonPressed or 0
-    if (down & L_TRIG) == 0 then return end
+    if (down & L_TRIG) == 0 then
+        sMiningCellKey = nil
+        sMiningFrames = 0
+        return
+    end
 
     local consumed = 0
     if (pressed & L_JPAD) ~= 0 then
@@ -874,24 +1167,26 @@ local function consume_build_controls(m)
     end
 
     if (pressed & A_BUTTON) ~= 0 then
-        local x, y, z = get_build_target(m)
+        local x, y, z = get_build_target(m, "place")
         if x then
             local placed, reason = place_grid_block(x, y, z)
             if not placed then
                 print("[SteveCraft] Cannot place block: " .. tostring(reason))
             end
+        else
+            print("[SteveCraft] No surface or voxel in the crosshair range.")
         end
         consumed = consumed | A_BUTTON
     end
-    if (pressed & B_BUTTON) ~= 0 then
-        local x, y, z = get_build_target(m)
-        if x then
-            local removed, reason = remove_grid_block(x, y, z)
-            if not removed and reason ~= "empty" then
-                print("[SteveCraft] Cannot remove block: " .. tostring(reason))
-            end
-        end
+
+    -- Hold L+B on a voxel to mine it. Mining time is scaled by the block's
+    -- Java hardness; this is a bare-hand prototype, not the Java tool system.
+    if (down & B_BUTTON) ~= 0 then
+        update_block_mining(m)
         consumed = consumed | B_BUTTON
+    else
+        sMiningCellKey = nil
+        sMiningFrames = 0
     end
 
     if consumed ~= 0 then
@@ -901,47 +1196,196 @@ local function consume_build_controls(m)
     end
 end
 
+local BLOCK_HUD_COLORS = {
+    ["minecraft:stone"] = { 132, 132, 132 },
+    ["minecraft:dirt"] = { 126, 82, 52 },
+    ["minecraft:grass_block"] = { 86, 150, 64 },
+    ["minecraft:oak_planks"] = { 174, 129, 72 },
+    ["minecraft:cobblestone"] = { 102, 102, 102 },
+    ["minecraft:glass"] = { 170, 218, 230 },
+    ["minecraft:bricks"] = { 166, 76, 62 },
+    ["minecraft:sand"] = { 218, 203, 139 },
+    ["minecraft:bedrock"] = { 62, 62, 70 },
+}
+
+local HEART_MASK = {
+    "0110110",
+    "1111111",
+    "1111111",
+    "0111110",
+    "0011100",
+    "0001000",
+}
+local FOOD_MASK = {
+    "0001100",
+    "0011110",
+    "0111110",
+    "0011111",
+    "0001111",
+    "0000011",
+}
+local ARMOR_MASK = {
+    "001000",
+    "011100",
+    "111110",
+    "111110",
+    "011100",
+    "001000",
+}
+
+local function hud_rect(x, y, width, height, r, g, b, a)
+    if type(djui_hud_set_color) ~= "function" or type(djui_hud_render_rect) ~= "function" then
+        return false
+    end
+    djui_hud_set_color(r, g, b, a or 255)
+    djui_hud_render_rect(x, y, width, height)
+    return true
+end
+
+local function draw_pixel_icon(mask, x, y, pixel, fill, empty, left_half_only)
+    for row = 1, #mask do
+        local line = mask[row]
+        for column = 1, #line do
+            if line:sub(column, column) == "1" then
+                local color = fill
+                if left_half_only and column > 4 then color = empty end
+                hud_rect(
+                    x + (column - 1) * pixel,
+                    y + (row - 1) * pixel,
+                    pixel, pixel,
+                    color[1], color[2], color[3], color[4] or 255
+                )
+            end
+        end
+    end
+end
+
+local function render_crosshair(screen_width, screen_height)
+    if not is_first_person_active() then return end
+    local center_x = math.floor(screen_width * 0.5)
+    local center_y = math.floor(screen_height * 0.5)
+    -- Black outline with a small white center, matching the Minecraft plus reticle.
+    hud_rect(center_x - 8, center_y - 1, 17, 3, 0, 0, 0, 220)
+    hud_rect(center_x - 1, center_y - 8, 3, 17, 0, 0, 0, 220)
+    hud_rect(center_x - 6, center_y, 13, 1, 245, 245, 245, 255)
+    hud_rect(center_x, center_y - 6, 1, 13, 245, 245, 245, 255)
+end
+
+local function render_status_bars(screen_width, screen_height)
+    local mario = gMarioStates and gMarioStates[0] or nil
+    local health = mario and mario.health or sLastMarioHealth or 0x0880
+    local half_hearts = health_to_half_hearts(health)
+    local pixel = 2
+    local icon_width = 14
+    local gap = 3
+    local row_width = 10 * icon_width + 9 * gap
+    local left_x = 18
+    local right_x = math.max(left_x + row_width + 12, screen_width - row_width - 18)
+    local y = screen_height - 82
+
+    for heart = 0, 9 do
+        local value = math.max(0, math.min(2, half_hearts - heart * 2))
+        local full = { 222, 48, 48, 255 }
+        local empty = { 72, 30, 34, 255 }
+        draw_pixel_icon(HEART_MASK, left_x + heart * (icon_width + gap), y, pixel, full, empty, value == 1)
+        if value == 0 then
+            draw_pixel_icon(HEART_MASK, left_x + heart * (icon_width + gap), y, pixel, empty, empty, false)
+        end
+    end
+
+    -- Hunger and armor are visual indicators only in this release. SM64CoopDX
+    -- has no Minecraft food/armor state to map yet; health is driven by MarioState.
+    for icon_index = 0, 9 do
+        local x = right_x + icon_index * (icon_width + gap)
+        draw_pixel_icon(
+            FOOD_MASK, x, y, pixel,
+            { 220, 147, 54, 255 }, { 70, 48, 27, 255 }, false
+        )
+        draw_pixel_icon(
+            ARMOR_MASK, left_x + icon_index * (icon_width + gap), y - 18, pixel,
+            { 160, 170, 180, 255 }, { 48, 54, 62, 255 }, false
+        )
+    end
+end
+
 local function render_build_inventory()
-    if not sInventoryLoaded or type(djui_hud_print_text) ~= "function" then return end
-    if type(djui_hud_set_resolution) == "function" and type(RESOLUTION_N64) == "number" then
-        djui_hud_set_resolution(RESOLUTION_N64)
+    if not sInventoryLoaded then return end
+
+    if type(djui_hud_set_resolution) == "function" and type(RESOLUTION_DJUI) == "number" then
+        djui_hud_set_resolution(RESOLUTION_DJUI)
     end
     if type(djui_hud_set_font) == "function" and type(FONT_NORMAL) == "number" then
         djui_hud_set_font(FONT_NORMAL)
     end
 
-    local parts = {}
+    local screen_width = type(djui_hud_get_screen_width) == "function" and djui_hud_get_screen_width() or 320
+    local screen_height = type(djui_hud_get_screen_height) == "function" and djui_hud_get_screen_height() or 240
+    render_crosshair(screen_width, screen_height)
+    render_status_bars(screen_width, screen_height)
+
+    if type(djui_hud_render_rect) ~= "function" then
+        if type(djui_hud_print_text) == "function" then
+            local parts = {}
+            for slot = 1, INVENTORY_SIZE do
+                local item = sInventory[slot]
+                local definition = item and BLOCK_CATALOG[item.id] or nil
+                local label = definition and definition.short or "--"
+                local count = item and item.count or 0
+                parts[#parts + 1] = (slot == sSelectedSlot and ">" or "") .. label .. ":" .. tostring(count)
+            end
+            djui_hud_print_text(table.concat(parts, "  "), 2, screen_height - 24, 0.6)
+        end
+        return
+    end
+
+    local gap = 4
+    local slot_size = math.max(22, math.min(40, (screen_width - 28 - 8 * gap) / 9))
+    local total_width = slot_size * 9 + gap * 8
+    local start_x = (screen_width - total_width) * 0.5
+    local start_y = screen_height - slot_size - 12
+
     for slot = 1, INVENTORY_SIZE do
+        local x = start_x + (slot - 1) * (slot_size + gap)
+        local selected = slot == sSelectedSlot
+        hud_rect(x - (selected and 2 or 1), start_y - (selected and 2 or 1),
+            slot_size + (selected and 4 or 2), slot_size + (selected and 4 or 2),
+            selected and 244 or 20, selected and 214 or 20, selected and 88 or 20, 255)
+        hud_rect(x, start_y, slot_size, slot_size, 54, 54, 54, 210)
         local item = sInventory[slot]
         local definition = item and BLOCK_CATALOG[item.id] or nil
-        local label = definition and definition.short or "--"
-        local count = item and item.count or 0
-        if slot == sSelectedSlot then
-            parts[#parts + 1] = ">" .. label .. ":" .. tostring(count) .. "<"
-        else
-            parts[#parts + 1] = label .. ":" .. tostring(count)
+        if definition then
+            local color = BLOCK_HUD_COLORS[item.id] or { 130, 130, 130 }
+            local inset = math.max(4, math.floor(slot_size * 0.25))
+            hud_rect(x + inset, start_y + inset, slot_size - inset * 2,
+                slot_size - inset * 2, color[1], color[2], color[3], 255)
+            if type(djui_hud_print_text) == "function" then
+                local count = tostring(item.count)
+                djui_hud_set_color(255, 255, 255, 255)
+                djui_hud_print_text(count, x + slot_size - 12, start_y + slot_size - 12, 0.55)
+            end
         end
     end
 
-    local line = table.concat(parts, "  ")
-    local scale = 0.28
-    local width = type(djui_hud_measure_text) == "function" and djui_hud_measure_text(line) * scale or #line * 3
-    local x = math.max(2, (320 - width) * 0.5)
+    if type(djui_hud_print_text) == "function" then
+        local selected = sInventory[sSelectedSlot]
+        local definition = selected and BLOCK_CATALOG[selected.id] or nil
+        local selected_text = definition and (definition.name .. "  Y " .. tostring(sBuildHeightOffset)) or "Empty slot"
+        djui_hud_set_color(255, 235, 170, 255)
+        local text_width = type(djui_hud_measure_text) == "function" and djui_hud_measure_text(selected_text) * 0.65 or #selected_text * 5
+        djui_hud_print_text(selected_text, math.max(4, (screen_width - text_width) * 0.5), start_y - 24, 0.65)
 
-    if type(djui_hud_set_color) == "function" then
-        djui_hud_set_color(255, 255, 255, 230)
+        if sMiningCellKey ~= nil then
+            local progress = math.min(1, sMiningFrames / math.max(1, MINING_FRAMES_PER_HARDNESS))
+            local bar_width = math.min(140, screen_width * 0.3)
+            local bar_x = (screen_width - bar_width) * 0.5
+            local bar_y = start_y - 10
+            hud_rect(bar_x, bar_y, bar_width, 4, 20, 20, 20, 220)
+            hud_rect(bar_x, bar_y, bar_width * progress, 4, 220, 190, 90, 255)
+        end
     end
-    djui_hud_print_text(line, x, 211, scale)
-
-    local selected = sInventory[sSelectedSlot]
-    local definition = selected and BLOCK_CATALOG[selected.id] or nil
-    local selected_text = definition and (definition.name .. "  Layer " .. tostring(sBuildHeightOffset)) or "No block selected"
-    if type(djui_hud_set_color) == "function" then
-        djui_hud_set_color(255, 220, 90, 230)
-    end
-    local selected_width = type(djui_hud_measure_text) == "function" and djui_hud_measure_text(selected_text) * 0.28 or #selected_text * 3
-    djui_hud_print_text(selected_text, math.max(2, (320 - selected_width) * 0.5), 198, 0.28)
 end
+
+
 
 local function get_build_system_state()
     return {
@@ -958,6 +1402,10 @@ local function on_warp()
     sModelAppliedObject = nil
     sLastSteveState = nil
     sCurrentSteveAnimation = nil
+    sFirstPersonInitialized = false
+    sLastMarioHealth = nil
+    sMiningCellKey = nil
+    sMiningFrames = 0
     deactivate_world_objects()
     sCurrentWorldKey = nil
     sCurrentWorldPrefix = nil
@@ -974,6 +1422,13 @@ if rawget(_G, "__STEVECRAFT_TEST") ~= nil then
         expected_index_length = 6 + (STEVE_ANIMATION_PARTS * 3 * 2),
     }
     __STEVECRAFT_TEST.constants = __STEVECRAFT_TEST.animation_constants
+    __STEVECRAFT_TEST.camera = {
+        ensure_first_person_camera = ensure_first_person_camera,
+        get_camera_ray = get_camera_ray,
+        trace_voxel_ray = trace_voxel_ray,
+        health_to_half_hearts = health_to_half_hearts,
+        mining_frames_for_hardness = mining_frames_for_hardness,
+    }
     __STEVECRAFT_TEST.build_system = {
         catalog = BLOCK_CATALOG,
         default_hotbar = copy_table(DEFAULT_HOTBAR),
