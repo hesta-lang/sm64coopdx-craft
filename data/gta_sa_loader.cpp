@@ -44,24 +44,55 @@ struct ImgEntry {
     uint64_t size = 0;
 };
 
+struct GtaSkinBinding {
+    rw::Skin* skin = nullptr;
+    rw::HAnimHierarchy* hierarchy = nullptr;
+    std::vector<rw::Frame*> boneFrames;
+};
+
 struct GtaVertex {
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
+    rw::V3d sourcePosition = { 0.0f, 0.0f, 0.0f };
+    rw::Frame* staticFrame = nullptr;
+    uint32_t skinBinding = UINT32_MAX;
+    uint8_t boneIndices[4] = { 0, 0, 0, 0 };
+    float boneWeights[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     uint8_t r = 255;
     uint8_t g = 255;
     uint8_t b = 255;
     uint8_t a = 255;
+    Vtx* target = nullptr;
 };
 
 struct GtaTriangle {
     GtaVertex v[3];
 };
 
+struct IfpKeyFrame {
+    rw::Quat rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+    rw::V3d translation = { 0.0f, 0.0f, 0.0f };
+    rw::V3d scale = { 1.0f, 1.0f, 1.0f };
+    float time = 0.0f;
+    bool hasTranslation = false;
+    bool hasScale = false;
+};
+
+struct IfpTrack {
+    std::string name;
+    int32_t boneId = -1;
+    uint32_t frameType = 0;
+    uint32_t sourceIndex = 0;
+    int32_t targetNode = -1;
+    std::vector<IfpKeyFrame> keyFrames;
+};
+
 struct IfpAnimationInfo {
     std::string name;
     uint32_t tracks = 0;
     uint32_t frames = 0;
+    float duration = 0.0f;
+    uint32_t matchedById = 0;
+    uint32_t mappedByOrder = 0;
+    std::vector<IfpTrack> trackData;
 };
 
 struct IfpInfo {
@@ -70,9 +101,24 @@ struct IfpInfo {
     std::vector<IfpAnimationInfo> animations;
 };
 
-rw::TexDictionary* sCurrentGtaTxd = nullptr;
+struct GtaModelState {
+    uint32_t modelId = 0;
+    float scale = 100.0f;
+    rw::Clump* clump = nullptr;
+    rw::HAnimHierarchy* hierarchy = nullptr;
+    std::vector<rw::Frame*> boneFrames;
+    std::vector<rw::Matrix> restMatrices;
+    std::vector<GtaSkinBinding> skinBindings;
+    std::vector<GtaTriangle> triangles;
+    std::vector<IfpAnimationInfo> animations;
+    int32_t activeAnimation = -1;
+    float animationTime = 0.0f;
+};
+
+rw::TexDictionary* sCurrentGtaTxdrw::TexDictionary* sCurrentGtaTxd = nullptr;
 bool sRwReady = false;
 uint32_t sGtaModelSerial = 0;
+std::vector<GtaModelState*> sGtaModels;
 
 uint32_t read_u32_le(const uint8_t* p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
@@ -81,6 +127,20 @@ uint32_t read_u32_le(const uint8_t* p) {
 
 uint16_t read_u16_le(const uint8_t* p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+int16_t read_i16_le(const uint8_t* p) {
+    const uint16_t raw = read_u16_le(p);
+    int16_t value = 0;
+    std::memcpy(&value, &raw, sizeof(value));
+    return value;
+}
+
+float read_f32_le(const uint8_t* p) {
+    const uint32_t raw = read_u32_le(p);
+    float value = 0.0f;
+    std::memcpy(&value, &raw, sizeof(value));
+    return value;
 }
 
 bool read_file(const std::string& path, std::vector<uint8_t>& out, std::string& error) {
@@ -283,52 +343,74 @@ uint8_t multiply_color(uint8_t a, uint8_t b) {
     return (uint8_t)(((uint16_t)a * (uint16_t)b + 127) / 255);
 }
 
-GtaVertex make_vertex(const rw::V3d& position, const rw::Matrix* matrix,
+GtaVertex make_vertex(const rw::V3d& position, rw::Frame* frame,
                       float scale, const rw::RGBA& materialColor,
-                      const rw::RGBA* vertexColor) {
-    rw::V3d world = position;
-    if (matrix) {
-        rw::V3d::transformPoints(&world, &position, 1, matrix);
-    }
-
+                      const rw::RGBA* vertexColor,
+                      const rw::Geometry* geometry, rw::Skin* skin,
+                      uint32_t skinBinding, uint32_t sourceVertex) {
+    (void)scale;
     GtaVertex out;
-    // GTA SA uses Z-up. SM64CoopDX uses Y-up.
-    out.x = world.x * scale;
-    out.y = world.z * scale;
-    out.z = -world.y * scale;
-
+    out.sourcePosition = position;
+    out.staticFrame = frame;
+    out.skinBinding = UINT32_MAX;
     out.r = materialColor.red;
     out.g = materialColor.green;
     out.b = materialColor.blue;
     out.a = materialColor.alpha;
+
     if (vertexColor) {
         out.r = multiply_color(out.r, vertexColor->red);
         out.g = multiply_color(out.g, vertexColor->green);
         out.b = multiply_color(out.b, vertexColor->blue);
         out.a = multiply_color(out.a, vertexColor->alpha);
     }
+
+    if (geometry && skin && skinBinding != UINT32_MAX &&
+        sourceVertex < (uint32_t)geometry->numVertices &&
+        skin->indices && skin->weights && skin->numBones > 0) {
+        bool hasInfluence = false;
+        for (uint32_t influence = 0; influence < 4; ++influence) {
+            const size_t offset = (size_t)sourceVertex * 4 + influence;
+            const uint8_t bone = skin->indices[offset];
+            const float weight = skin->weights[offset];
+            if (bone >= skin->numBones || !std::isfinite(weight) || weight <= 0.00001f) {
+                continue;
+            }
+            out.boneIndices[influence] = bone;
+            out.boneWeights[influence] = weight;
+            hasInfluence = true;
+        }
+        if (hasInfluence) out.skinBinding = skinBinding;
+    }
     return out;
 }
 
 void append_triangle(std::vector<GtaTriangle>& triangles,
                      const rw::V3d& a, const rw::V3d& b, const rw::V3d& c,
-                     const rw::Matrix* matrix, float scale,
+                     rw::Frame* frame, float scale,
                      const rw::RGBA& materialColor,
-                     const rw::RGBA* colorA = nullptr,
-                     const rw::RGBA* colorB = nullptr,
-                     const rw::RGBA* colorC = nullptr) {
+                     const rw::RGBA* colorA, const rw::RGBA* colorB,
+                     const rw::RGBA* colorC,
+                     const rw::Geometry* geometry, rw::Skin* skin,
+                     uint32_t skinBinding,
+                     uint32_t indexA, uint32_t indexB, uint32_t indexC) {
     if (triangles.size() >= GTA_MAX_TRIANGLES) return;
     GtaTriangle triangle;
-    triangle.v[0] = make_vertex(a, matrix, scale, materialColor, colorA);
-    triangle.v[1] = make_vertex(b, matrix, scale, materialColor, colorB);
-    triangle.v[2] = make_vertex(c, matrix, scale, materialColor, colorC);
+    triangle.v[0] = make_vertex(a, frame, scale, materialColor, colorA,
+                                geometry, skin, skinBinding, indexA);
+    triangle.v[1] = make_vertex(b, frame, scale, materialColor, colorB,
+                                geometry, skin, skinBinding, indexB);
+    triangle.v[2] = make_vertex(c, frame, scale, materialColor, colorC,
+                                geometry, skin, skinBinding, indexC);
     triangles.push_back(triangle);
 }
 
 bool read_native_vertex(const uint8_t* source, uint32_t stride, uint32_t localIndex,
-                        uint32_t colorOffset, const rw::Matrix* matrix,
-                        float scale, const rw::RGBA& materialColor,
-                        GtaVertex& out) {
+                        uint32_t sourceVertexIndex, uint32_t colorOffset,
+                        rw::Frame* frame, float scale,
+                        const rw::RGBA& materialColor,
+                        const rw::Geometry* geometry, rw::Skin* skin,
+                        uint32_t skinBinding, GtaVertex& out) {
     if (!source || stride < 12) return false;
     const uint8_t* vertex = source + (size_t)localIndex * stride;
     rw::V3d position;
@@ -336,7 +418,8 @@ bool read_native_vertex(const uint8_t* source, uint32_t stride, uint32_t localIn
     std::memcpy(&position.y, vertex + 4, sizeof(float));
     std::memcpy(&position.z, vertex + 8, sizeof(float));
 
-    out = make_vertex(position, matrix, scale, materialColor, nullptr);
+    out = make_vertex(position, frame, scale, materialColor, nullptr,
+                      geometry, skin, skinBinding, sourceVertexIndex);
     if (colorOffset != UINT32_MAX && colorOffset + 4 <= stride) {
         uint32_t argb = 0;
         std::memcpy(&argb, vertex + colorOffset, sizeof(argb));
@@ -352,10 +435,52 @@ bool read_native_vertex(const uint8_t* source, uint32_t stride, uint32_t localIn
     return true;
 }
 
+uint32_t create_skin_binding(std::vector<GtaSkinBinding>& bindings,
+                             rw::Atomic* atomic,
+                             rw::Geometry* geometry,
+                             rw::HAnimHierarchy* fallbackHierarchy) {
+    rw::Skin* skin = rw::Skin::get(geometry);
+    if (!skin || !skin->indices || !skin->weights || !skin->inverseMatrices ||
+        skin->numBones <= 0) return UINT32_MAX;
+
+    rw::HAnimHierarchy* hierarchy = rw::Skin::getHierarchy(atomic);
+    if (!hierarchy && atomic->getFrame()) {
+        hierarchy = rw::HAnimHierarchy::find(atomic->getFrame());
+    }
+    if (!hierarchy) hierarchy = fallbackHierarchy;
+    if (!hierarchy || hierarchy->numNodes <= 0) return UINT32_MAX;
+
+    hierarchy->attach();
+    GtaSkinBinding binding;
+    binding.skin = skin;
+    binding.hierarchy = hierarchy;
+    binding.boneFrames.resize((size_t)skin->numBones, nullptr);
+
+    for (int32_t bone = 0; bone < skin->numBones; ++bone) {
+        rw::Frame* frame = nullptr;
+        for (int32_t node = 0; node < hierarchy->numNodes; ++node) {
+            const rw::HAnimNodeInfo& info = hierarchy->nodeInfo[node];
+            if (info.index == bone && info.frame) {
+                frame = info.frame;
+                break;
+            }
+        }
+        if (!frame && bone < hierarchy->numNodes) {
+            frame = hierarchy->nodeInfo[bone].frame;
+        }
+        binding.boneFrames[(size_t)bone] = frame;
+    }
+
+    const uint32_t index = (uint32_t)bindings.size();
+    bindings.push_back(binding);
+    return index;
+}
+
 void append_native_mesh(std::vector<GtaTriangle>& triangles,
                         const rw::d3d8::InstanceData& instance,
                         const rw::Geometry* geometry,
-                        const rw::Matrix* matrix,
+                        rw::Frame* frame,
+                        rw::Skin* skin, uint32_t skinBinding,
                         float scale) {
     if (!instance.vertexBuffer || !instance.indexBuffer ||
         instance.numVertices <= 0 || instance.numIndices < 3 ||
@@ -368,36 +493,43 @@ void append_native_mesh(std::vector<GtaTriangle>& triangles,
     const uint32_t colorOffset = 12 + (hasNormals ? 12 : 0);
     const rw::RGBA materialColor = get_material_color(instance.material);
 
-    auto emit = [&](uint32_t ia, uint32_t ib, uint32_t ic) {
-        auto localIndex = [&](uint32_t value, uint32_t& result) {
-            if (value < (uint32_t)instance.numVertices) {
-                result = value;
-                return true;
-            }
-            if (value >= instance.minVert &&
-                value - instance.minVert < (uint32_t)instance.numVertices) {
-                result = value - instance.minVert;
-                return true;
-            }
-            return false;
-        };
+    auto localIndex = [&](uint32_t value, uint32_t& result, uint32_t& sourceIndex) {
+        if (value >= instance.minVert &&
+            value - instance.minVert < (uint32_t)instance.numVertices) {
+            result = value - instance.minVert;
+            sourceIndex = value;
+            return true;
+        }
+        if (value < (uint32_t)instance.numVertices) {
+            result = value;
+            sourceIndex = value + instance.minVert;
+            return true;
+        }
+        return false;
+    };
 
+    auto emit = [&](uint32_t ia, uint32_t ib, uint32_t ic) {
         uint32_t a = 0, b = 0, c = 0;
-        if (!localIndex(ia, a) || !localIndex(ib, b) || !localIndex(ic, c)) return;
+        uint32_t sourceA = 0, sourceB = 0, sourceC = 0;
+        if (!localIndex(ia, a, sourceA) ||
+            !localIndex(ib, b, sourceB) ||
+            !localIndex(ic, c, sourceC)) return;
         GtaTriangle triangle;
-        if (!read_native_vertex(vertices, (uint32_t)instance.stride, a,
+        if (!read_native_vertex(vertices, (uint32_t)instance.stride, a, sourceA,
                                 hasPrelit ? colorOffset : UINT32_MAX,
-                                matrix, scale, materialColor, triangle.v[0]) ||
-            !read_native_vertex(vertices, (uint32_t)instance.stride, b,
+                                frame, scale, materialColor, geometry, skin,
+                                skinBinding, triangle.v[0]) ||
+            !read_native_vertex(vertices, (uint32_t)instance.stride, b, sourceB,
                                 hasPrelit ? colorOffset : UINT32_MAX,
-                                matrix, scale, materialColor, triangle.v[1]) ||
-            !read_native_vertex(vertices, (uint32_t)instance.stride, c,
+                                frame, scale, materialColor, geometry, skin,
+                                skinBinding, triangle.v[1]) ||
+            !read_native_vertex(vertices, (uint32_t)instance.stride, c, sourceC,
                                 hasPrelit ? colorOffset : UINT32_MAX,
-                                matrix, scale, materialColor, triangle.v[2])) return;
+                                frame, scale, materialColor, geometry, skin,
+                                skinBinding, triangle.v[2])) return;
         if (triangles.size() < GTA_MAX_TRIANGLES) triangles.push_back(triangle);
     };
 
-    // D3D primitive values: 4 = triangle list, 5 = triangle strip.
     if (instance.primType == 5) {
         for (uint32_t i = 0; i + 2 < (uint32_t)instance.numIndices; ++i) {
             if (i & 1) emit(indices[i + 1], indices[i], indices[i + 2]);
@@ -411,10 +543,15 @@ void append_native_mesh(std::vector<GtaTriangle>& triangles,
 }
 
 void append_geometry(std::vector<GtaTriangle>& triangles,
+                     std::vector<GtaSkinBinding>& bindings,
+                     rw::HAnimHierarchy* fallbackHierarchy,
                      rw::Atomic* atomic, float scale) {
     if (!atomic || !atomic->geometry) return;
     rw::Geometry* geometry = atomic->geometry;
-    const rw::Matrix* matrix = atomic->getFrame() ? atomic->getFrame()->getLTM() : nullptr;
+    rw::Frame* frame = atomic->getFrame();
+    rw::Skin* skin = rw::Skin::get(geometry);
+    const uint32_t skinBinding =
+        create_skin_binding(bindings, atomic, geometry, fallbackHierarchy);
 
     if (geometry->instData &&
         geometry->instData->platform == rw::PLATFORM_D3D8) {
@@ -422,7 +559,8 @@ void append_geometry(std::vector<GtaTriangle>& triangles,
             (const rw::d3d8::InstanceDataHeader*)geometry->instData;
         if (!header->inst || header->numMeshes == 0) return;
         for (uint32_t mesh = 0; mesh < header->numMeshes; ++mesh) {
-            append_native_mesh(triangles, header->inst[mesh], geometry, matrix, scale);
+            append_native_mesh(triangles, header->inst[mesh], geometry, frame,
+                               skin, skinBinding, scale);
         }
         return;
     }
@@ -455,11 +593,98 @@ void append_geometry(std::vector<GtaTriangle>& triangles,
                         geometry->morphTargets[0].vertices[ia],
                         geometry->morphTargets[0].vertices[ib],
                         geometry->morphTargets[0].vertices[ic],
-                        matrix, scale, materialColor, ca, cb, cc);
+                        frame, scale, materialColor, ca, cb, cc,
+                        geometry, skin, skinBinding, ia, ib, ic);
     }
 }
 
-void push_error(lua_State* L, const std::string& error) {
+s16 clamp_vertex_coordinate(float value) {
+    if (!std::isfinite(value)) return 0;
+    if (value > 32767.0f) return 32767;
+    if (value < -32768.0f) return -32768;
+    return (s16)std::lround(value);
+}
+
+void update_gta_model_vertices(GtaModelState* state) {
+    if (!state) return;
+    for (GtaTriangle& triangle : state->triangles) {
+        for (GtaVertex& vertex : triangle.v) {
+            if (!vertex.target) continue;
+            rw::V3d world = vertex.sourcePosition;
+            bool skinned = false;
+
+            if (vertex.skinBinding < state->skinBindings.size()) {
+                const GtaSkinBinding& binding = state->skinBindings[vertex.skinBinding];
+                if (binding.skin && binding.skin->inverseMatrices) {
+                    rw::V3d accumulated = { 0.0f, 0.0f, 0.0f };
+                    float totalWeight = 0.0f;
+                    for (uint32_t influence = 0; influence < 4; ++influence) {
+                        const uint8_t bone = vertex.boneIndices[influence];
+                        const float weight = vertex.boneWeights[influence];
+                        if (weight <= 0.00001f || bone >= binding.boneFrames.size()) continue;
+                        rw::Frame* boneFrame = binding.boneFrames[bone];
+                        if (!boneFrame) continue;
+
+                        const rw::Matrix* inverseBind =
+                            reinterpret_cast<const rw::Matrix*>(
+                                binding.skin->inverseMatrices + (size_t)bone * 16);
+                        rw::Matrix skinMatrix;
+                        rw::Matrix::mult(&skinMatrix, inverseBind, boneFrame->getLTM());
+                        rw::V3d transformed;
+                        rw::V3d::transformPoints(&transformed, &vertex.sourcePosition, 1, &skinMatrix);
+                        accumulated.x += transformed.x * weight;
+                        accumulated.y += transformed.y * weight;
+                        accumulated.z += transformed.z * weight;
+                        totalWeight += weight;
+                    }
+                    if (totalWeight > 0.00001f) {
+                        world.x = accumulated.x / totalWeight;
+                        world.y = accumulated.y / totalWeight;
+                        world.z = accumulated.z / totalWeight;
+                        skinned = true;
+                    }
+                }
+            }
+
+            if (!skinned && vertex.staticFrame) {
+                rw::V3d::transformPoints(&world, &vertex.sourcePosition, 1,
+                                         vertex.staticFrame->getLTM());
+            }
+
+            // GTA SA is Z-up; SM64CoopDX is Y-up.
+            vertex.target->v.ob[0] = clamp_vertex_coordinate(world.x * state->scale);
+            vertex.target->v.ob[1] = clamp_vertex_coordinate(world.z * state->scale);
+            vertex.target->v.ob[2] = clamp_vertex_coordinate(-world.y * state->scale);
+            vertex.target->v.tc[0] = 0;
+            vertex.target->v.tc[1] = 0;
+            vertex.target->v.cn[0] = vertex.r;
+            vertex.target->v.cn[1] = vertex.g;
+            vertex.target->v.cn[2] = vertex.b;
+            vertex.target->v.cn[3] = vertex.a;
+        }
+    }
+}
+
+void capture_gta_hierarchy(GtaModelState* state) {
+    if (!state || !state->clump || !state->clump->getFrame()) return;
+    state->hierarchy = rw::HAnimHierarchy::find(state->clump->getFrame());
+    if (!state->hierarchy) return;
+    state->hierarchy->attach();
+
+    const size_t count = (size_t)state->hierarchy->numNodes;
+    state->boneFrames.resize(count, nullptr);
+    state->restMatrices.resize(count);
+    for (size_t i = 0; i < count; ++i) {
+        rw::Frame* frame = state->hierarchy->nodeInfo[i].frame;
+        state->boneFrames[i] = frame;
+        if (frame) {
+            frame->getLTM();
+            state->restMatrices[i] = frame->matrix;
+        }
+    }
+}
+
+void push_error(lua_State* Lvoid push_error(lua_State* L, const std::string& error) {
     lua_pushnil(L);
     lua_pushstring(L, error.c_str());
 }
@@ -711,26 +936,26 @@ bool parse_ifp(const std::vector<uint8_t>& bytes, IfpInfo& info,
     return false;
 }
 
-bool create_dynos_model(const std::vector<GtaTriangle>& triangles,
+bool create_dynos_model(GtaModelState* state,
                         uint32_t& modelId, std::string& error) {
     if (!gLuaActiveMod) {
         error = "El modelo debe cargarse desde el contexto de un mod Lua.";
         return false;
     }
-    if (triangles.empty()) {
+    if (!state || state->triangles.empty()) {
         error = "El DFF no contiene geometría renderizable compatible.";
         return false;
     }
 
     const uint32_t serial = ++sGtaModelSerial;
     const size_t partCount =
-        (triangles.size() + GTA_TRIANGLES_PER_PART - 1) / GTA_TRIANGLES_PER_PART;
+        (state->triangles.size() + GTA_TRIANGLES_PER_PART - 1) / GTA_TRIANGLES_PER_PART;
     std::vector<Gfx*> parts;
     parts.reserve(partCount);
 
     for (size_t part = 0; part < partCount; ++part) {
         const size_t first = part * GTA_TRIANGLES_PER_PART;
-        const size_t count = std::min(GTA_TRIANGLES_PER_PART, triangles.size() - first);
+        const size_t count = std::min(GTA_TRIANGLES_PER_PART, state->triangles.size() - first);
         char name[96];
 
         std::snprintf(name, sizeof(name), "gta_sa_%u_vtx_%zu", serial, part);
@@ -742,17 +967,18 @@ bool create_dynos_model(const std::vector<GtaTriangle>& triangles,
 
         for (size_t i = 0; i < count; ++i) {
             for (size_t j = 0; j < 3; ++j) {
-                const GtaVertex& source = triangles[first + i].v[j];
+                GtaVertex& source = state->triangles[first + i].v[j];
                 Vtx& target = vertices[i * 3 + j];
-                target.l.x = source.x;
-                target.l.y = source.y;
-                target.l.z = source.z;
-                target.l.tu = 0;
-                target.l.tv = 0;
-                target.l.r = source.r;
-                target.l.g = source.g;
-                target.l.b = source.b;
-                target.l.a = source.a;
+                source.target = &target;
+                target.v.ob[0] = 0;
+                target.v.ob[1] = 0;
+                target.v.ob[2] = 0;
+                target.v.tc[0] = 0;
+                target.v.tc[1] = 0;
+                target.v.cn[0] = source.r;
+                target.v.cn[1] = source.g;
+                target.v.cn[2] = source.b;
+                target.v.cn[3] = source.a;
             }
         }
 
@@ -789,8 +1015,13 @@ bool create_dynos_model(const std::vector<GtaTriangle>& triangles,
         error = "SM64CoopDX rechazó el display list generado para el DFF.";
         return false;
     }
+
+    state->modelId = modelId;
+    sGtaModels.push_back(state);
+    update_gta_model_vertices(state);
     return true;
 }
+
 
 } // namespace
 
@@ -870,34 +1101,46 @@ extern "C" int gta_sa_lua_load_dff(lua_State* L) {
         return 2;
     }
 
+    GtaModelState* state = new GtaModelState();
+    state->clump = clump;
+    state->scale = scale;
     if (clump->getFrame()) clump->getFrame()->syncHierarchyLTM();
-    std::vector<GtaTriangle> triangles;
+    capture_gta_hierarchy(state);
+
     FORLIST(link, clump->atomics) {
         rw::Atomic* atomic = rw::Atomic::fromClump(link);
-        append_geometry(triangles, atomic, scale);
-        if (triangles.size() >= GTA_MAX_TRIANGLES) break;
+        append_geometry(state->triangles, state->skinBindings,
+                        state->hierarchy, atomic, scale);
+        if (state->triangles.size() >= GTA_MAX_TRIANGLES) break;
     }
 
-    clump->destroy();
-    if (triangles.empty()) {
+    if (state->triangles.empty()) {
+        clump->destroy();
+        delete state;
         push_error(L, "El DFF se leyó, pero no se pudieron convertir sus geometrías. Puede usar skinning/nativo no soportado.");
         return 2;
     }
 
     uint32_t modelId = 0;
-    if (!create_dynos_model(triangles, modelId, error)) {
+    if (!create_dynos_model(state, modelId, error)) {
+        clump->destroy();
+        delete state;
         push_error(L, error);
         return 2;
     }
 
     lua_pushinteger(L, (lua_Integer)modelId);
-    lua_createtable(L, 0, 3);
-    lua_pushinteger(L, (lua_Integer)triangles.size());
+    lua_createtable(L, 0, 5);
+    lua_pushinteger(L, (lua_Integer)state->triangles.size());
     lua_setfield(L, -2, "triangles");
-    lua_pushinteger(L, (lua_Integer)triangles.size() * 3);
+    lua_pushinteger(L, (lua_Integer)state->triangles.size() * 3);
     lua_setfield(L, -2, "vertices");
     lua_pushnumber(L, scale);
     lua_setfield(L, -2, "scale");
+    lua_pushinteger(L, state->hierarchy ? state->hierarchy->numNodes : 0);
+    lua_setfield(L, -2, "bones");
+    lua_pushinteger(L, (lua_Integer)state->skinBindings.size());
+    lua_setfield(L, -2, "skinnedMeshes");
     return 2;
 }
 
