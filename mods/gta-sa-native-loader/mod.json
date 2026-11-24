@@ -1,6 +1,0 @@
-{
-  "name": "GTA SA Native DFF + IFP Test",
-  "description": "Prueba la carga directa del modelo de jugador DFF/TXD y las animaciones IFP originales desde los archivos IMG de GTA San Andreas.",
-  "version": "0.2.0-alpha",
-  "author": "hesta-lang"
-}
