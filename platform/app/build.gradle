@@ -11,6 +11,8 @@ def assetNames = ["lang", "mods", "dynos", "palettes"]
 
 android {
     compileSdkVersion 33
+    buildToolsVersion "34.0.0"
+    ndkVersion "27.0.12077973"
     defaultConfig {
         if (buildAsApplication) {
             applicationId "com.maniscat2.sm64coopdx"
@@ -28,7 +30,7 @@ android {
         externalNativeBuild {
             ndkBuild {
                 arguments "-j10"
-                abiFilters 'arm64-v8a', 'x86_64'
+                abiFilters 'arm64-v8a'
             }
         }
     }

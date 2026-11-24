@@ -18,12 +18,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: gta-native-assets-android-\${{ github.event.pull_request.number || github.ref }}
+  group: gta-native-assets-android-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-android:
-    name: Build Android APK (arm64-v8a + x86_64)
+    name: Build Android APK (arm64-v8a)
     runs-on: ubuntu-22.04
     timeout-minutes: 90
 
@@ -33,11 +33,21 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Java 17
+      - name: Set up Java 17 with Gradle cache
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+          cache-dependency-path: platform/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Cache Android SDK and NDK
+        uses: actions/cache@v4
+        with:
+          path: ~/android-sdk
+          key: ${{ runner.os }}-gta-native-android-sdk-v2-${{ hashFiles('.github/workflows/gta-native-assets-android.yml', 'platform/app/build.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-gta-native-android-sdk-v2-
 
       - name: Install Linux build dependencies
         run: |
@@ -59,10 +69,12 @@ jobs:
         run: |
           export ANDROID_HOME="$HOME/android-sdk"
           mkdir -p "$ANDROID_HOME/cmdline-tools"
-          cd "$RUNNER_TEMP"
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O android-command-line-tools.zip
-          unzip -q android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
-          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            cd "$RUNNER_TEMP"
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O android-command-line-tools.zip
+            unzip -q android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          fi
 
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
@@ -77,8 +89,8 @@ jobs:
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-33" \
-            "build-tools;33.0.2" \
-            "ndk;27.2.12479018"
+            "build-tools;34.0.0" \
+            "ndk;27.0.12077973"
 
           echo "sdk.dir=$ANDROID_HOME" > "$GITHUB_WORKSPACE/platform/local.properties"
 
@@ -91,16 +103,16 @@ jobs:
       - name: Generate game assets
         run: make -j"$(nproc)" TOUCH_CONTROLS=1
 
-      - name: Build Android release
+      - name: Build Android arm64 release
         working-directory: platform
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --build-cache --parallel --stacktrace --console=plain
 
       - name: Sign and verify APK
         run: |
           APK="platform/app/build/outputs/apk/release/app-release-unsigned.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/33.0.2/apksigner"
+          APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
 
           test -f "$APK"
           test -f "platform/android/key.pk8"
