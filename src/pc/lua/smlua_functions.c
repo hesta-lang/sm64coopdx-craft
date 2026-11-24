@@ -22,9 +22,11 @@
 #include "game/hardcoded.h"
 #include "include/macros.h"
 
+#ifdef TARGET_ANDROID
 int gta_sa_lua_scan_img(lua_State* L);
 int gta_sa_lua_load_dff(lua_State* L);
 int gta_sa_lua_load_ifp(lua_State* L);
+#endif
 
 bool smlua_functions_valid_param_count(lua_State* L, int expected) {
     int top = lua_gettop(L);
@@ -1118,7 +1120,9 @@ void smlua_bind_functions(void) {
     smlua_bind_function(L, "djui_hud_print_text", smlua_func_djui_hud_print_text);
     smlua_bind_function(L, "djui_hud_print_text_interpolated", smlua_func_djui_hud_print_text_interpolated);
     smlua_bind_function(L, "return_self", smlua_func_return_self); // compatibility band-aid
+#ifdef TARGET_ANDROID
     smlua_bind_function(L, "gta_sa_scan_img", gta_sa_lua_scan_img);
     smlua_bind_function(L, "gta_sa_load_dff", gta_sa_lua_load_dff);
     smlua_bind_function(L, "gta_sa_load_ifp", gta_sa_lua_load_ifp);
+#endif
 }
