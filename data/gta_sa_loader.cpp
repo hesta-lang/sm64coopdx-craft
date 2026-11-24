@@ -1,5 +1,16 @@
 #include "dynos.cpp.h"
 
+// dynos.cpp.h defines min/max/clamp as macros; keep them away from STL headers.
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#ifdef clamp
+#undef clamp
+#endif
+
 extern "C" {
 #include "pc/lua/smlua.h"
 #include <PR/gbi.h>

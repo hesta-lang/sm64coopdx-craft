@@ -525,6 +525,9 @@ include dynos.mk
 LEVEL_C_FILES     := $(wildcard levels/*/leveldata.c) $(wildcard levels/*/script.c) $(wildcard levels/*/geo.c)
 C_FILES           := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)) $(LEVEL_C_FILES)
 CPP_FILES         := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.cpp))
+ifneq ($(TARGET_ANDROID),1)
+  CPP_FILES := $(filter-out data/gta_sa_loader.cpp,$(CPP_FILES))
+endif
 S_FILES           := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
 ULTRA_C_FILES     := $(foreach dir,$(ULTRA_SRC_DIRS),$(wildcard $(dir)/*.c))
 GODDARD_C_FILES   := $(foreach dir,$(GODDARD_SRC_DIRS),$(wildcard $(dir)/*.c))
