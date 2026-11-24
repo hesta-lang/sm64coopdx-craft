@@ -22,8 +22,8 @@ The mod reads `player.dff` and `player.txd` from `player.img`, and `ped.ifp` fro
 ## Current alpha limits
 
 - DFF skin weights are evaluated on the CPU using inverse-bind matrices and live HAnim frames; DynOS vertex buffers are updated dynamically.
-- IFP tracks are matched by RenderWare bone ID first. Unmatched tracks fall back to unused target bones in hierarchy order; unmapped target bones remain in their rest pose.
-- Order-based retargeting is an approximation. Skeletons with unrelated topology or proportions cannot be guaranteed to animate anatomically correctly without semantic bone metadata or an explicit mapping.
+- IFP tracks are resolved by RenderWare HAnim bone ID. When an ANP3 track stores `bone_id = -1`, its canonical GTA SA bone name is converted to the corresponding HAnim tag before matching. Only tracks still unresolved after semantic matching use an order-based fallback; unmapped target bones remain in their rest pose.
+- The GTA SA canonical tags make the standard pedestrian skeleton independent of frame order or cosmetic bone-name spacing/case. A completely unrelated rig with different anatomy and no matching semantic tags cannot be perfectly retargeted automatically; the order fallback is only a best-effort approximation.
 - GTA TXD textures are parsed by RenderWare but are not yet bound to the generated SM64 display lists.
 - GTA collision, IDE/IPL world streaming, and GTA gameplay systems are not included.
 

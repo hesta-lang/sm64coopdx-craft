@@ -1,5 +1,5 @@
 -- name: GTA San Andreas Native Player
--- description: Loads player.dff and player.txd directly from a GTA SA IMG v2 archive. Reads ped.ifp metadata from anim.img.
+-- description: Loads GTA SA DFF/TXD models and retargets ANP3/ANPK IFP animations to their HAnim skeleton.
 -- version: 0.1.0-alpha
 
 -- Copy the ORIGINAL player.img and anim.img from your GTA San Andreas installation

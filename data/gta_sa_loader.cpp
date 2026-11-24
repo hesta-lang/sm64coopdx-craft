@@ -891,9 +891,9 @@ bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
                 IfpKeyFrame key;
 
                 if (track.frameType == 1 || track.frameType == 2) {
-                    key.rotation.x = read_f32_le(data + 0);
-                    key.rotation.y = read_f32_le(data + 4);
-                    key.rotation.z = read_f32_le(data + 8);
+                    key.rotation.x = -read_f32_le(data + 0);
+                    key.rotation.y = -read_f32_le(data + 4);
+                    key.rotation.z = -read_f32_le(data + 8);
                     key.rotation.w = read_f32_le(data + 12);
                     key.time = read_f32_le(data + 16);
                     if (track.frameType == 2) {
@@ -903,9 +903,9 @@ bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
                         key.hasTranslation = true;
                     }
                 } else {
-                    key.rotation.x = (float)read_i16_le(data + 0) / 4096.0f;
-                    key.rotation.y = (float)read_i16_le(data + 2) / 4096.0f;
-                    key.rotation.z = (float)read_i16_le(data + 4) / 4096.0f;
+                    key.rotation.x = -(float)read_i16_le(data + 0) / 4096.0f;
+                    key.rotation.y = -(float)read_i16_le(data + 2) / 4096.0f;
+                    key.rotation.z = -(float)read_i16_le(data + 4) / 4096.0f;
                     key.rotation.w = (float)read_i16_le(data + 6) / 4096.0f;
                     key.time = (float)read_i16_le(data + 8) / 60.0f;
                     if (track.frameType == 4) {
