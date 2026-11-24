@@ -1160,8 +1160,6 @@ bool apply_gta_animation(GtaModelState* state) {
         (size_t)state->activeAnimation >= state->animations.size()) return false;
 
     IfpAnimationInfo& animation = state->animations[(size_t)state->activeAnimation];
-    map_ifp_tracks(state, animation);
-
     for (size_t i = 0; i < state->boneFrames.size(); ++i) {
         rw::Frame* frame = state->boneFrames[i];
         if (frame && i < state->restMatrices.size()) {
@@ -1416,13 +1414,28 @@ extern "C" int gta_sa_lua_load_dff(lua_State* L) {
 }
 
 extern "C" int gta_sa_lua_load_ifp(lua_State* L) {
-    if (lua_gettop(L) != 2) {
-        push_error(L, "Uso: gta_sa_load_ifp(imgPath, ifpEntry)");
+    const int argc = lua_gettop(L);
+    if (argc != 2 && argc != 3) {
+        push_error(L, "Uso: gta_sa_load_ifp(imgPath, ifpEntry[, modelId])");
         return 2;
     }
     const char* imgPath = luaL_checkstring(L, 1);
     const char* ifpEntry = luaL_checkstring(L, 2);
     if (!imgPath || !ifpEntry) return 0;
+
+    GtaModelState* model = nullptr;
+    if (argc == 3) {
+        const lua_Integer requestedId = luaL_checkinteger(L, 3);
+        if (requestedId <= 0 || requestedId > UINT32_MAX) {
+            push_error(L, "modelId inválido.");
+            return 2;
+        }
+        model = find_gta_model((uint32_t)requestedId);
+        if (!model) {
+            push_error(L, "No existe un modelo GTA cargado con ese modelId.");
+            return 2;
+        }
+    }
 
     std::vector<uint8_t> bytes;
     std::string error;
@@ -1437,22 +1450,119 @@ extern "C" int gta_sa_lua_load_ifp(lua_State* L) {
         return 2;
     }
 
-    lua_createtable(L, 0, 3);
+    if (model) {
+        model->animations = info.animations;
+        model->activeAnimation = -1;
+        model->animationTime = 0.0f;
+    }
+
+    const std::vector<IfpAnimationInfo>& animations =
+        model ? model->animations : info.animations;
+    lua_createtable(L, 0, 4);
     lua_pushstring(L, info.version.c_str());
     lua_setfield(L, -2, "version");
     lua_pushstring(L, info.internalName.c_str());
     lua_setfield(L, -2, "internalName");
-    lua_createtable(L, (int)info.animations.size(), 0);
-    for (size_t i = 0; i < info.animations.size(); ++i) {
-        lua_createtable(L, 0, 3);
-        lua_pushstring(L, info.animations[i].name.c_str());
+    lua_pushinteger(L, model && model->hierarchy ? model->hierarchy->numNodes : 0);
+    lua_setfield(L, -2, "targetBones");
+    lua_createtable(L, (int)animations.size(), 0);
+    for (size_t i = 0; i < animations.size(); ++i) {
+        lua_createtable(L, 0, 4);
+        lua_pushstring(L, animations[i].name.c_str());
         lua_setfield(L, -2, "name");
-        lua_pushinteger(L, info.animations[i].tracks);
+        lua_pushinteger(L, animations[i].tracks);
         lua_setfield(L, -2, "tracks");
-        lua_pushinteger(L, info.animations[i].frames);
+        lua_pushinteger(L, animations[i].frames);
         lua_setfield(L, -2, "frames");
+        lua_pushnumber(L, animations[i].duration);
+        lua_setfield(L, -2, "duration");
         lua_rawseti(L, -2, (int)i + 1);
     }
     lua_setfield(L, -2, "animations");
+    return 1;
+}
+
+extern "C" int gta_sa_lua_play_ifp(lua_State* L) {
+    if (lua_gettop(L) != 2) {
+        push_error(L, "Uso: gta_sa_play_ifp(modelId, animationName)");
+        return 2;
+    }
+    const lua_Integer requestedId = luaL_checkinteger(L, 1);
+    const char* animationName = luaL_checkstring(L, 2);
+    if (requestedId <= 0 || requestedId > UINT32_MAX || !animationName) {
+        push_error(L, "modelId o nombre de animación inválido.");
+        return 2;
+    }
+
+    GtaModelState* model = find_gta_model((uint32_t)requestedId);
+    if (!model) {
+        push_error(L, "No existe un modelo GTA cargado con ese modelId.");
+        return 2;
+    }
+    if (!model->hierarchy || model->boneFrames.empty()) {
+        push_error(L, "El DFF no contiene una jerarquía HAnim utilizable.");
+        return 2;
+    }
+
+    auto equalName = [](const std::string& a, const char* b) {
+        if (!b || a.size() != std::strlen(b)) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (std::tolower((unsigned char)a[i]) !=
+                std::tolower((unsigned char)b[i])) return false;
+        }
+        return true;
+    };
+
+    for (size_t i = 0; i < model->animations.size(); ++i) {
+        IfpAnimationInfo& animation = model->animations[i];
+        if (!equalName(animation.name, animationName)) continue;
+        map_ifp_tracks(model, animation);
+        model->activeAnimation = (int32_t)i;
+        model->animationTime = 0.0f;
+        if (!apply_gta_animation(model)) {
+            push_error(L, "No se pudo aplicar la animación al esqueleto DFF.");
+            return 2;
+        }
+
+        lua_pushboolean(L, 1);
+        lua_createtable(L, 0, 3);
+        lua_pushinteger(L, animation.matchedById);
+        lua_setfield(L, -2, "matchedById");
+        lua_pushinteger(L, animation.mappedByOrder);
+        lua_setfield(L, -2, "mappedByOrder");
+        lua_pushinteger(L, animation.tracks -
+                           animation.matchedById - animation.mappedByOrder);
+        lua_setfield(L, -2, "unmappedTracks");
+        return 2;
+    }
+
+    push_error(L, std::string("No existe la animación '") + animationName + "'.");
+    return 2;
+}
+
+extern "C" int gta_sa_lua_update_ifp(lua_State* L) {
+    if (lua_gettop(L) != 2) {
+        push_error(L, "Uso: gta_sa_update_ifp(modelId, deltaSeconds)");
+        return 2;
+    }
+    const lua_Integer requestedId = luaL_checkinteger(L, 1);
+    const float delta = (float)luaL_checknumber(L, 2);
+    if (requestedId <= 0 || requestedId > UINT32_MAX ||
+        !std::isfinite(delta) || delta < 0.0f || delta > 1.0f) {
+        push_error(L, "modelId o deltaSeconds fuera de rango.");
+        return 2;
+    }
+
+    GtaModelState* model = find_gta_model((uint32_t)requestedId);
+    if (!model || model->activeAnimation < 0) {
+        push_error(L, "El modelo no tiene una animación IFP activa.");
+        return 2;
+    }
+    model->animationTime += delta;
+    if (!apply_gta_animation(model)) {
+        push_error(L, "Falló la actualización de la animación IFP.");
+        return 2;
+    }
+    lua_pushboolean(L, 1);
     return 1;
 }

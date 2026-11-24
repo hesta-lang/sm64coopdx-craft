@@ -26,6 +26,8 @@
 int gta_sa_lua_scan_img(lua_State* L);
 int gta_sa_lua_load_dff(lua_State* L);
 int gta_sa_lua_load_ifp(lua_State* L);
+int gta_sa_lua_play_ifp(lua_State* L);
+int gta_sa_lua_update_ifp(lua_State* L);
 #endif
 
 bool smlua_functions_valid_param_count(lua_State* L, int expected) {
@@ -1124,5 +1126,7 @@ void smlua_bind_functions(void) {
     smlua_bind_function(L, "gta_sa_scan_img", gta_sa_lua_scan_img);
     smlua_bind_function(L, "gta_sa_load_dff", gta_sa_lua_load_dff);
     smlua_bind_function(L, "gta_sa_load_ifp", gta_sa_lua_load_ifp);
+    smlua_bind_function(L, "gta_sa_play_ifp", gta_sa_lua_play_ifp);
+    smlua_bind_function(L, "gta_sa_update_ifp", gta_sa_lua_update_ifp);
 #endif
 }

@@ -58,12 +58,30 @@ local function load_gta_player()
     print("[GTA SA] player.dff cargado: " ..
           tostring(modelInfo.triangles) .. " triángulos.")
 
-    gtaAnimationInfo = gta_sa_load_ifp(ANIM_IMG, PED_IFP)
+    gtaAnimationInfo = gta_sa_load_ifp(ANIM_IMG, PED_IFP, gtaModelId)
     if gtaAnimationInfo ~= nil then
-        print("[GTA SA] ped.ifp leído (" ..
-              tostring(#gtaAnimationInfo.animations) .. " animaciones).")
+        local selectedAnimation = nil
+        for _, animation in ipairs(gtaAnimationInfo.animations) do
+            if string.upper(animation.name) == "IDLE" then
+                selectedAnimation = animation.name
+                break
+            end
+        end
+        if selectedAnimation == nil and #gtaAnimationInfo.animations > 0 then
+            selectedAnimation = gtaAnimationInfo.animations[1].name
+        end
+        if selectedAnimation ~= nil then
+            local started, mapping = gta_sa_play_ifp(gtaModelId, selectedAnimation)
+            if started then
+                print("[GTA SA] IFP activo: " .. selectedAnimation ..
+                      " (IDs: " .. tostring(mapping.matchedById) ..
+                      ", retarget: " .. tostring(mapping.mappedByOrder) .. ").")
+            else
+                print("[GTA SA] No se pudo aplicar IFP: " .. tostring(mapping))
+            end
+        end
     else
-        print("[GTA SA] ped.ifp no disponible; el modelo permanece en pose estática.")
+        print("[GTA SA] ped.ifp no disponible; el modelo permanece estático.")
     end
 end
 
@@ -71,6 +89,10 @@ local function mario_update(m)
     if m.playerIndex ~= 0 then return end
 
     load_gta_player()
+
+    if gtaModelId ~= nil then
+        gta_sa_update_ifp(gtaModelId, 1.0 / 30.0)
+    end
 
     if gtaModelId ~= nil and not gtaSpawned then
         local obj = spawn_sync_object(
