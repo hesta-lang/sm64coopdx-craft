@@ -29,8 +29,6 @@ extern "C" {
 #include <vector>
 
 #include "rw.h"
-#include "src/rwplugins.h"
-#include "src/d3d/rwd3d8.h"
 
 namespace {
 
@@ -787,7 +785,7 @@ bool create_dynos_model(const std::vector<GtaTriangle>& triangles,
     root[parts.size() + 2] = gsSPEndDisplayList();
 
     modelId = 0;
-    if (!DynOS_Model_LoadDl(&modelId, MODEL_POOL_SESSION, LAYER_OPAQUE, root)) {
+    if (!DynOS_Model_LoadDl(&modelId, MODEL_POOL_SESSION, 1, root)) {
         error = "SM64CoopDX rechazó el display list generado para el DFF.";
         return false;
     }
