@@ -45,6 +45,7 @@ struct ImgEntry {
 };
 
 struct GtaSkinBinding {
+    rw::Atomic* atomic = nullptr;
     rw::Skin* skin = nullptr;
     rw::HAnimHierarchy* hierarchy = nullptr;
     std::vector<rw::Frame*> boneFrames;
@@ -451,10 +452,12 @@ uint32_t create_skin_binding(std::vector<GtaSkinBinding>& bindings,
         hierarchy = rw::HAnimHierarchy::find(atomic->getFrame());
     }
     if (!hierarchy) hierarchy = fallbackHierarchy;
-    if (!hierarchy || hierarchy->numNodes <= 0) return UINT32_MAX;
+    if (!hierarchy || hierarchy->numNodes <= 0 ||
+        skin->numBones != hierarchy->numNodes) return UINT32_MAX;
 
     hierarchy->attach();
     GtaSkinBinding binding;
+    binding.atomic = atomic;
     binding.skin = skin;
     binding.hierarchy = hierarchy;
     binding.boneFrames.resize((size_t)skin->numBones, nullptr);
@@ -618,14 +621,24 @@ void update_gta_model_vertices(GtaModelState* state) {
         binding.validSkinMatrices.assign(boneCount, 0);
         if (!binding.skin || !binding.skin->inverseMatrices) continue;
 
+        rw::Matrix inverseAtomic;
+        inverseAtomic.setIdentity();
+        if (binding.atomic && binding.atomic->getFrame()) {
+            rw::Matrix::invert(&inverseAtomic, binding.atomic->getFrame()->getLTM());
+        }
+
         for (size_t bone = 0; bone < boneCount; ++bone) {
             rw::Frame* boneFrame = binding.boneFrames[bone];
             if (!boneFrame) continue;
             const rw::Matrix* inverseBind =
                 reinterpret_cast<const rw::Matrix*>(
                     binding.skin->inverseMatrices + bone * 16);
-            rw::Matrix::mult(&binding.skinMatrices[bone],
-                             inverseBind, boneFrame->getLTM());
+
+            // Match librw's skin pipeline: inverse bind, current bone transform,
+            // then inverse atomic transform to return to mesh-local coordinates.
+            rw::Matrix boneToAtomic;
+            rw::Matrix::mult(&boneToAtomic, boneFrame->getLTM(), &inverseAtomic);
+            rw::Matrix::mult(&binding.skinMatrices[bone], inverseBind, &boneToAtomic);
             binding.validSkinMatrices[bone] = 1;
         }
     }
@@ -703,7 +716,7 @@ void capture_gta_hierarchy(GtaModelState* state) {
     }
 }
 
-void push_error(lua_State* Lvoid push_error(lua_State* L, const std::string& error) {
+void push_error(lua_State* L, const std::string& error) {
     lua_pushnil(L);
     lua_pushstring(L, error.c_str());
 }
