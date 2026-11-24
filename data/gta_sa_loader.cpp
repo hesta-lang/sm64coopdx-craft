@@ -652,15 +652,15 @@ void update_gta_model_vertices(GtaModelState* state) {
             }
 
             // GTA SA is Z-up; SM64CoopDX is Y-up.
-            vertex.target->v.ob[0] = clamp_vertex_coordinate(world.x * state->scale);
-            vertex.target->v.ob[1] = clamp_vertex_coordinate(world.z * state->scale);
-            vertex.target->v.ob[2] = clamp_vertex_coordinate(-world.y * state->scale);
-            vertex.target->v.tc[0] = 0;
-            vertex.target->v.tc[1] = 0;
-            vertex.target->v.cn[0] = vertex.r;
-            vertex.target->v.cn[1] = vertex.g;
-            vertex.target->v.cn[2] = vertex.b;
-            vertex.target->v.cn[3] = vertex.a;
+            vertex.target->l.x = clamp_vertex_coordinate(world.x * state->scale);
+            vertex.target->l.y = clamp_vertex_coordinate(world.z * state->scale);
+            vertex.target->l.z = clamp_vertex_coordinate(-world.y * state->scale);
+            vertex.target->l.tu = 0;
+            vertex.target->l.tv = 0;
+            vertex.target->l.r = vertex.r;
+            vertex.target->l.g = vertex.g;
+            vertex.target->l.b = vertex.b;
+            vertex.target->l.a = vertex.a;
         }
     }
 }
@@ -970,15 +970,15 @@ bool create_dynos_model(GtaModelState* state,
                 GtaVertex& source = state->triangles[first + i].v[j];
                 Vtx& target = vertices[i * 3 + j];
                 source.target = &target;
-                target.v.ob[0] = 0;
-                target.v.ob[1] = 0;
-                target.v.ob[2] = 0;
-                target.v.tc[0] = 0;
-                target.v.tc[1] = 0;
-                target.v.cn[0] = source.r;
-                target.v.cn[1] = source.g;
-                target.v.cn[2] = source.b;
-                target.v.cn[3] = source.a;
+                target.l.x = 0;
+                target.l.y = 0;
+                target.l.z = 0;
+                target.l.tu = 0;
+                target.l.tv = 0;
+                target.l.r = source.r;
+                target.l.g = source.g;
+                target.l.b = source.b;
+                target.l.a = source.a;
             }
         }
 
