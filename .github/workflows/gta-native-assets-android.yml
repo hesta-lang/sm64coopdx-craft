@@ -109,6 +109,12 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon --build-cache --parallel --stacktrace --console=plain
 
+      - name: Verify standalone GTA SA mod is packaged in APK
+        run: |
+          APK="platform/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+          unzip -l "$APK" | grep -F 'assets/mods/gta-sa-native-loader.lua'
+
       - name: Sign and verify APK
         run: |
           APK="platform/app/build/outputs/apk/release/app-release-unsigned.apk"
