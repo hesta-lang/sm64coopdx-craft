@@ -80,6 +80,7 @@ struct IfpKeyFrame {
 
 struct IfpTrack {
     std::string name;
+    int32_t sourceBoneId = -1;
     int32_t boneId = -1;
     uint32_t frameType = 0;
     uint32_t sourceIndex = 0;
@@ -749,6 +750,59 @@ std::string read_fixed_name(const uint8_t* p, size_t size) {
     return std::string(reinterpret_cast<const char*>(p), length);
 }
 
+
+std::string normalize_sa_bone_name(const std::string& name) {
+    std::string normalized;
+    normalized.reserve(name.size());
+    for (unsigned char ch : name) {
+        if (!std::isspace(ch)) {
+            normalized.push_back((char)std::tolower(ch));
+        }
+    }
+    return normalized;
+}
+
+int32_t resolve_sa_bone_id_from_name(const std::string& name) {
+    struct BoneNameTag { const char* name; int32_t id; };
+    static const BoneNameTag tags[] = {
+        { "root", 0 }, { "normal", 0 },
+        { "pelvis", 1 }, { "spine", 2 }, { "spine1", 3 },
+        { "neck", 4 }, { "head", 5 },
+        { "lbrow", 6 }, { "leftbrow", 6 },
+        { "rbrow", 7 }, { "rightbrow", 7 },
+        { "jaw", 8 },
+        { "bip01rclavicle", 21 }, { "rclavicle", 21 }, { "rightclavicle", 21 },
+        { "rupperarm", 22 }, { "rightupperarm", 22 },
+        { "rforearm", 23 }, { "rightforearm", 23 },
+        { "rhand", 24 }, { "righthand", 24 },
+        { "rfingers", 25 }, { "rfinger", 25 }, { "rightfinger", 25 },
+        { "rfinger01", 26 }, { "rightfinger01", 26 },
+        { "bip01lclavicle", 31 }, { "lclavicle", 31 }, { "leftclavicle", 31 },
+        { "lupperarm", 32 }, { "leftupperarm", 32 },
+        { "lforearm", 33 }, { "leftforearm", 33 },
+        { "lhand", 34 }, { "lefthand", 34 },
+        { "lfingers", 35 }, { "lfinger", 35 }, { "leftfinger", 35 },
+        { "lfinger01", 36 }, { "leftfinger01", 36 },
+        { "lthigh", 41 }, { "leftthigh", 41 },
+        { "lcalf", 42 }, { "leftcalf", 42 },
+        { "lfoot", 43 }, { "leftfoot", 43 },
+        { "ltoe", 44 }, { "ltoe0", 44 }, { "lefttoe", 44 },
+        { "rthigh", 51 }, { "rightthigh", 51 },
+        { "rcalf", 52 }, { "rightcalf", 52 },
+        { "rfoot", 53 }, { "rightfoot", 53 },
+        { "rtoe", 54 }, { "rtoe0", 54 }, { "righttoe", 54 },
+        { "belly", 201 },
+        { "rbreast", 301 }, { "rightbreast", 301 },
+        { "lbreast", 302 }, { "leftbreast", 302 }
+    };
+
+    const std::string normalized = normalize_sa_bone_name(name);
+    for (const BoneNameTag& tag : tags) {
+        if (normalized == tag.name) return tag.id;
+    }
+    return -1;
+}
+
 bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
                     std::string& error) {
     if (bytes.size() < 36 || std::memcmp(bytes.data(), "ANP3", 4) != 0) {
@@ -806,7 +860,10 @@ bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
             track.name = read_fixed_name(bytes.data() + offset, 24);
             track.frameType = read_u32_le(bytes.data() + offset + 24);
             const uint32_t frameCount = read_u32_le(bytes.data() + offset + 28);
-            track.boneId = (int32_t)read_u32_le(bytes.data() + offset + 32);
+            track.sourceBoneId = (int32_t)read_u32_le(bytes.data() + offset + 32);
+            track.boneId = track.sourceBoneId >= 0
+                               ? track.sourceBoneId
+                               : resolve_sa_bone_id_from_name(track.name);
             track.sourceIndex = trackIndex;
             offset += 36;
 
@@ -852,9 +909,9 @@ bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
                     key.rotation.w = (float)read_i16_le(data + 6) / 4096.0f;
                     key.time = (float)read_i16_le(data + 8) / 60.0f;
                     if (track.frameType == 4) {
-                        key.translation.x = (float)read_i16_le(data + 10) / 1024.0f;
-                        key.translation.y = (float)read_i16_le(data + 12) / 1024.0f;
-                        key.translation.z = (float)read_i16_le(data + 14) / 1024.0f;
+                        key.translation.x = (float)read_i16_le(data + 10) / 4096.0f;
+                        key.translation.y = (float)read_i16_le(data + 12) / 4096.0f;
+                        key.translation.z = (float)read_i16_le(data + 14) / 4096.0f;
                         key.hasTranslation = true;
                     }
                 }
@@ -977,9 +1034,12 @@ bool parse_ifp_anpk(const std::vector<uint8_t>& bytes, IfpInfo& info,
             track.name = read_fixed_name(animData, 24);
             track.sourceIndex = trackIndex;
             const uint32_t frameCount = read_u32_le(animData + 28);
-            if (animDataLength >= 44) {
-                track.boneId = (int32_t)read_u32_le(animData + 40);
-            }
+            track.sourceBoneId = animDataLength >= 44
+                                     ? (int32_t)read_u32_le(animData + 40)
+                                     : -1;
+            track.boneId = track.sourceBoneId >= 0
+                               ? track.sourceBoneId
+                               : resolve_sa_bone_id_from_name(track.name);
 
             if (frameCount > 1000000U || totalFrames + frameCount > 1000000ULL) {
                 error = "ANPK contiene demasiados keyframes.";
@@ -1200,16 +1260,27 @@ bool apply_gta_animation(GtaModelState* state) {
         rw::Frame* frame = state->boneFrames[(size_t)track.targetNode];
         if (!frame || (size_t)track.targetNode >= state->restMatrices.size()) continue;
         const IfpKeyFrame key = sample_ifp_track(track, animationTime);
-        rw::Matrix local = state->restMatrices[(size_t)track.targetNode];
-        local.rotate(key.rotation, rw::COMBINEPOSTCONCAT);
+        const rw::Matrix& rest = state->restMatrices[(size_t)track.targetNode];
+        rw::Matrix local = rest;
+        rw::Matrix animatedRotation;
+        animatedRotation.setIdentity();
 
-        if (key.hasTranslation) {
-            const rw::V3d& restPosition =
-                state->restMatrices[(size_t)track.targetNode].pos;
-            local.pos.x = restPosition.x + key.translation.x;
-            local.pos.y = restPosition.y + key.translation.y;
-            local.pos.z = restPosition.z + key.translation.z;
+        rw::Quat rotation = key.rotation;
+        if (rw::normsq(rotation) > 0.000001f) {
+            rotation = rw::normalize(rotation);
+        } else {
+            rotation = rw::makeQuat(1.0f, 0.0f, 0.0f, 0.0f);
         }
+        animatedRotation.rotate(rotation, rw::COMBINEREPLACE);
+
+        // IFP quaternions are absolute local rotations. Replace the rotation
+        // while retaining the target bone's bind-pose translation and scale.
+        local.right = rw::scale(animatedRotation.right, rw::length(rest.right));
+        local.up = rw::scale(animatedRotation.up, rw::length(rest.up));
+        local.at = rw::scale(animatedRotation.at, rw::length(rest.at));
+
+        // Root translation is an absolute local channel, not a delta from bind pose.
+        local.pos = key.hasTranslation ? key.translation : rest.pos;
         if (key.hasScale) {
             local.scale(&key.scale, rw::COMBINEPOSTCONCAT);
         }
@@ -1223,7 +1294,7 @@ bool apply_gta_animation(GtaModelState* state) {
     return true;
 }
 
-bool create_dynos_model(bool create_dynos_model(GtaModelState* state,
+bool create_dynos_model(GtaModelState* state,
                         uint32_t& modelId, std::string& error) {
     if (!gLuaActiveMod) {
         error = "El modelo debe cargarse desde el contexto de un mod Lua.";
