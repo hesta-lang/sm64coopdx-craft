@@ -1,0 +1,126 @@
+name: GTA Native Assets Android Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - gta-native-assets
+  pull_request:
+    branches:
+      - android
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gta-native-assets-android-\${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build Android APK (arm64-v8a + x86_64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout source with RenderWare reader
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            python3 \
+            libglew-dev \
+            libsdl2-dev \
+            libz-dev \
+            libcurl4-openssl-dev \
+            g++ \
+            zip \
+            unzip \
+            wget
+
+      - name: Install Android SDK, build tools and NDK
+        run: |
+          export ANDROID_HOME="$HOME/android-sdk"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          cd "$RUNNER_TEMP"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O android-command-line-tools.zip
+          unzip -q android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
+          set -o pipefail
+
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "ndk;27.2.12479018"
+
+          echo "sdk.dir=$ANDROID_HOME" > "$GITHUB_WORKSPACE/platform/local.properties"
+
+      - name: Verify librw checkout
+        run: |
+          test -f third_party/librw/LICENSE
+          test -f third_party/librw/src/rwobjects.h
+          git -C third_party/librw rev-parse HEAD
+
+      - name: Generate game assets
+        run: make -j"$(nproc)" TOUCH_CONTROLS=1
+
+      - name: Build Android release
+        working-directory: platform
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Sign and verify APK
+        run: |
+          APK="platform/app/build/outputs/apk/release/app-release-unsigned.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/33.0.2/apksigner"
+
+          test -f "$APK"
+          test -f "platform/android/key.pk8"
+          test -f "platform/android/certificate.pem"
+
+          "$APKSIGNER" sign \
+            --key platform/android/key.pk8 \
+            --cert platform/android/certificate.pem \
+            "$APK"
+
+          "$APKSIGNER" verify --verbose "$APK"
+
+          mkdir -p build/us_pc
+          cp "$APK" build/us_pc/sm64coopdx-gta-native-assets.apk
+
+      - name: Upload signed Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm64coopdx-gta-native-assets-android
+          path: build/us_pc/sm64coopdx-gta-native-assets.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
