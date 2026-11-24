@@ -15,6 +15,7 @@ local gtaModelId = nil
 local gtaSpawned = false
 local gtaLoadAttempted = false
 local gtaAnimationInfo = nil
+local gtaAnimationActive = false
 
 local function gta_player_init(obj)
     obj.oFlags = OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE
@@ -73,10 +74,12 @@ local function load_gta_player()
         if selectedAnimation ~= nil then
             local started, mapping = gta_sa_play_ifp(gtaModelId, selectedAnimation)
             if started then
+                gtaAnimationActive = true
                 print("[GTA SA] IFP activo: " .. selectedAnimation ..
                       " (IDs: " .. tostring(mapping.matchedById) ..
                       ", retarget: " .. tostring(mapping.mappedByOrder) .. ").")
             else
+                gtaAnimationActive = false
                 print("[GTA SA] No se pudo aplicar IFP: " .. tostring(mapping))
             end
         end
@@ -90,7 +93,7 @@ local function mario_update(m)
 
     load_gta_player()
 
-    if gtaModelId ~= nil then
+    if gtaModelId ~= nil and gtaAnimationActive then
         gta_sa_update_ifp(gtaModelId, 1.0 / 30.0)
     end
 

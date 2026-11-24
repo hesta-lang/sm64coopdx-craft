@@ -1,35 +1,30 @@
 # GTA San Andreas Native Assets (alpha)
 
-This built-in test mod reads original GTA San Andreas assets directly from an IMG v2 archive. It does not extract or convert them.
+This test mod reads original GTA San Andreas assets directly from IMG v2 archives. It does not extract or convert them.
 
-## Files expected on Android
+## Android files
 
 Copy the original files from your own GTA San Andreas installation to:
 
-- \`/storage/emulated/0/GTA_SA/models/player.img\`
-- \`/storage/emulated/0/GTA_SA/anim/anim.img\`
+- `/storage/emulated/0/GTA_SA/models/player.img`
+- `/storage/emulated/0/GTA_SA/anim/anim.img`
 
-The test mod looks for:
+The mod reads `player.dff` and `player.txd` from `player.img`, and `ped.ifp` from `anim.img`. Change the path constants at the top of `main.lua` when needed.
 
-- \`player.dff\` and \`player.txd\` inside \`player.img\`
-- \`ped.ifp\` inside \`anim.img\`
+## Lua API
 
-Edit the two path constants at the top of \`main.lua\` if the files are stored elsewhere.
-
-## Native Lua API
-
-- \`gta_sa_scan_img(path)\`: reads and lists IMG v2 entries (first 128 names in the result).
-- \`gta_sa_load_dff(imgPath, dffEntry, scale[, txdImgPath, txdEntry])\`: reads the DFF/TXD from IMG, parses RenderWare, converts available triangle geometry into a DynOS model and returns its model ID plus counts.
-- \`gta_sa_load_ifp(imgPath, ifpEntry)\`: reads and validates ANP3/ANPK IFP structures and returns animation/track/frame metadata.
+- `gta_sa_scan_img(path)`: reads IMG v2 entries.
+- `gta_sa_load_dff(imgPath, dffEntry, scale[, txdImgPath, txdEntry])`: loads a DFF and returns its DynOS model ID and mesh/bone counts.
+- `gta_sa_load_ifp(imgPath, ifpEntry[, modelId])`: decodes ANP3/ANPK keyframes. Supplying modelId attaches the clips to that DFF.
+- `gta_sa_play_ifp(modelId, animationName)`: starts a clip and automatically retargets its tracks to the DFF HAnim hierarchy.
+- `gta_sa_update_ifp(modelId, deltaSeconds)`: advances and applies the active clip.
 
 ## Current alpha limits
 
-This is a first runtime integration, not full GTA runtime compatibility:
-- IMG v2, DFF RenderWare chunks, D3D8 native vertex/index buffers, TXD dictionaries and IFP ANP3/ANPK metadata are read in the engine.
-- The generated preview model uses vertex/material colors. Texture dictionary decoding is wired into librw, but the SM64 display-list conversion does not yet bind GTA TXD texture maps.
-- DFF skin weights are evaluated on the CPU against the live HAnim bone frames, and the generated DynOS vertex buffers are updated every frame.
-- IFP ANP3/ANPK keyframes are decoded and retargeted first by RenderWare bone ID, then by the remaining hierarchy order when IDs do not match. Unmapped target bones retain their rest pose.
-- Automatic order-based retargeting is a fallback, not a guarantee of anatomically perfect motion when two rigs have unrelated hierarchies or proportions; such rigs need semantic bone metadata or a mapping table.
+- DFF skin weights are evaluated on the CPU using inverse-bind matrices and live HAnim frames; DynOS vertex buffers are updated dynamically.
+- IFP tracks are matched by RenderWare bone ID first. Unmatched tracks fall back to unused target bones in hierarchy order; unmapped target bones remain in their rest pose.
+- Order-based retargeting is an approximation. Skeletons with unrelated topology or proportions cannot be guaranteed to animate anatomically correctly without semantic bone metadata or an explicit mapping.
+- GTA TXD textures are parsed by RenderWare but are not yet bound to the generated SM64 display lists.
 - GTA collision, IDE/IPL world streaming, and GTA gameplay systems are not included.
 
-The model and texture archives are copyrighted game data and are intentionally not included in this repository. The user must provide files from their own game installation.
+Game archives and models are copyrighted data and are intentionally not included. The user must supply files from their own game installation.

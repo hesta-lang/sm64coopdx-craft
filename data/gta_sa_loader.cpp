@@ -48,6 +48,8 @@ struct GtaSkinBinding {
     rw::Skin* skin = nullptr;
     rw::HAnimHierarchy* hierarchy = nullptr;
     std::vector<rw::Frame*> boneFrames;
+    std::vector<rw::Matrix> skinMatrices;
+    std::vector<uint8_t> validSkinMatrices;
 };
 
 struct GtaVertex {
@@ -115,7 +117,7 @@ struct GtaModelState {
     float animationTime = 0.0f;
 };
 
-rw::TexDictionary* sCurrentGtaTxdrw::TexDictionary* sCurrentGtaTxd = nullptr;
+rw::TexDictionary* sCurrentGtaTxd = nullptr;
 bool sRwReady = false;
 uint32_t sGtaModelSerial = 0;
 std::vector<GtaModelState*> sGtaModels;
@@ -607,6 +609,26 @@ s16 clamp_vertex_coordinate(float value) {
 
 void update_gta_model_vertices(GtaModelState* state) {
     if (!state) return;
+
+    // Build each inverse-bind * current-bone matrix once per bone, not once per vertex.
+    for (GtaSkinBinding& binding : state->skinBindings) {
+        const size_t boneCount = binding.boneFrames.size();
+        binding.skinMatrices.resize(boneCount);
+        binding.validSkinMatrices.assign(boneCount, 0);
+        if (!binding.skin || !binding.skin->inverseMatrices) continue;
+
+        for (size_t bone = 0; bone < boneCount; ++bone) {
+            rw::Frame* boneFrame = binding.boneFrames[bone];
+            if (!boneFrame) continue;
+            const rw::Matrix* inverseBind =
+                reinterpret_cast<const rw::Matrix*>(
+                    binding.skin->inverseMatrices + bone * 16);
+            rw::Matrix::mult(&binding.skinMatrices[bone],
+                             inverseBind, boneFrame->getLTM());
+            binding.validSkinMatrices[bone] = 1;
+        }
+    }
+
     for (GtaTriangle& triangle : state->triangles) {
         for (GtaVertex& vertex : triangle.v) {
             if (!vertex.target) continue;
@@ -615,21 +637,17 @@ void update_gta_model_vertices(GtaModelState* state) {
 
             if (vertex.skinBinding < state->skinBindings.size()) {
                 const GtaSkinBinding& binding = state->skinBindings[vertex.skinBinding];
-                if (binding.skin && binding.skin->inverseMatrices) {
+                if (binding.skin) {
                     rw::V3d accumulated = { 0.0f, 0.0f, 0.0f };
                     float totalWeight = 0.0f;
                     for (uint32_t influence = 0; influence < 4; ++influence) {
                         const uint8_t bone = vertex.boneIndices[influence];
                         const float weight = vertex.boneWeights[influence];
-                        if (weight <= 0.00001f || bone >= binding.boneFrames.size()) continue;
-                        rw::Frame* boneFrame = binding.boneFrames[bone];
-                        if (!boneFrame) continue;
+                        if (weight <= 0.00001f ||
+                            bone >= binding.skinMatrices.size() ||
+                            !binding.validSkinMatrices[bone]) continue;
 
-                        const rw::Matrix* inverseBind =
-                            reinterpret_cast<const rw::Matrix*>(
-                                binding.skin->inverseMatrices + (size_t)bone * 16);
-                        rw::Matrix skinMatrix;
-                        rw::Matrix::mult(&skinMatrix, inverseBind, boneFrame->getLTM());
+                        const rw::Matrix& skinMatrix = binding.skinMatrices[bone];
                         rw::V3d transformed;
                         rw::V3d::transformPoints(&transformed, &vertex.sourcePosition, 1, &skinMatrix);
                         accumulated.x += transformed.x * weight;
