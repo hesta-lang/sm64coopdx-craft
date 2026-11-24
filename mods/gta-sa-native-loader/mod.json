@@ -1,6 +1,6 @@
 {
-  "name": "GTA San Andreas Native Player",
-  "description": "Loads original GTA SA player DFF/TXD and reads IFP data directly from IMG v2 archives.",
-  "version": "0.1.0-alpha",
+  "name": "GTA SA Native DFF + IFP Test",
+  "description": "Prueba la carga directa del modelo de jugador DFF/TXD y las animaciones IFP originales desde los archivos IMG de GTA San Andreas.",
+  "version": "0.2.0-alpha",
   "author": "hesta-lang"
 }

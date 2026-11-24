@@ -1,30 +1,49 @@
-# GTA San Andreas Native Assets (alpha)
+# GTA SA Native DFF + IFP Test (alpha)
 
-This test mod reads original GTA San Andreas assets directly from IMG v2 archives. It does not extract or convert them.
+This test mod checks the Android RenderWare loader using the original GTA San Andreas player model and pedestrian animation archive. It reads files directly from IMG v2 archives; it does not extract or convert them.
 
-## Android files
+## 1. Prepare the files on Android
 
-Copy the original files from your own GTA San Andreas installation to:
+Create this folder structure in the external files directory belonging to SM64CoopDX:
 
-- `/storage/emulated/0/GTA_SA/models/player.img`
-- `/storage/emulated/0/GTA_SA/anim/anim.img`
+```text
+Android/data/com.maniscat2.sm64coopdx/files/GTA_SA/
+├── models/
+│   └── player.img
+└── anim/
+    └── anim.img
+```
 
-The mod reads `player.dff` and `player.txd` from `player.img`, and `ped.ifp` from `anim.img`. Change the path constants at the top of `main.lua` when needed.
+Use your own legally obtained GTA San Andreas files. The mod expects:
 
-## Lua API
+- `player.dff` and `player.txd` inside `models/player.img`
+- `ped.ifp` inside `anim/anim.img`
 
-- `gta_sa_scan_img(path)`: reads IMG v2 entries.
-- `gta_sa_load_dff(imgPath, dffEntry, scale[, txdImgPath, txdEntry])`: loads a DFF and returns its DynOS model ID and mesh/bone counts.
-- `gta_sa_load_ifp(imgPath, ifpEntry[, modelId])`: decodes ANP3/ANPK keyframes. Supplying modelId attaches the clips to that DFF.
-- `gta_sa_play_ifp(modelId, animationName)`: starts a clip and automatically retargets its tracks to the DFF HAnim hierarchy.
-- `gta_sa_update_ifp(modelId, deltaSeconds)`: advances and applies the active clip.
+Do not extract the entries and do not rename them. The IMG archives are read in place.
 
-## Current alpha limits
+## 2. Run the test
 
-- DFF skin weights are evaluated on the CPU using inverse-bind matrices and live HAnim frames; DynOS vertex buffers are updated dynamically.
-- IFP tracks are resolved by RenderWare HAnim bone ID. When an ANP3 track stores `bone_id = -1`, its canonical GTA SA bone name is converted to the corresponding HAnim tag before matching. Only tracks still unresolved after semantic matching use an order-based fallback; unmapped target bones remain in their rest pose.
-- The GTA SA canonical tags make the standard pedestrian skeleton independent of frame order or cosmetic bone-name spacing/case. A completely unrelated rig with different anatomy and no matching semantic tags cannot be perfectly retargeted automatically; the order fallback is only a best-effort approximation.
-- GTA TXD textures are parsed by RenderWare but are not yet bound to the generated SM64 display lists.
-- GTA collision, IDE/IPL world streaming, and GTA gameplay systems are not included.
+Enable **GTA SA Native DFF + IFP Test** in SM64CoopDX and start a level.
 
-Game archives and models are copyrighted data and are intentionally not included. The user must supply files from their own game installation.
+The mod attempts to:
+
+1. Scan `player.img`.
+2. Read `player.dff` and its `player.txd`.
+3. Parse `ped.ifp` from `anim.img`.
+4. Select an animation whose name contains `IDLE`; if none exists, use the first decoded clip as a playback smoke test.
+5. Spawn the DFF model near the local player and advance the selected IFP clip.
+
+Diagnostic messages are prefixed with `[GTA SA TEST]` and are written to the game console/log.
+
+## 3. What this test does not prove
+
+A successful APK build only proves that the native code compiles and packages. Runtime loading and animation playback still need to be checked in-game with the original archives.
+
+Current limitations:
+
+- TXD dictionaries are parsed, but their textures are not yet bound to the generated SM64 display lists.
+- DFF formats that use unsupported native geometry data may not render.
+- IFP tracks are mapped using HAnim IDs and canonical GTA SA bone tags; order-based fallback is only approximate.
+- This test does not load GTA SA collision, IDE/IPL maps, or GTA gameplay systems.
+
+The repository intentionally does not include Rockstar game archives or extracted copyrighted model/animation files.
