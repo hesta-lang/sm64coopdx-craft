@@ -743,10 +743,11 @@ bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
         error = "Tamaño ANP3 fuera de los límites del recurso.";
         return false;
     }
+
     const size_t limit = (size_t)limit64;
     info.version = "ANP3";
     info.internalName = read_fixed_name(bytes.data() + 8, 24);
-    uint32_t animationCount = read_u32_le(bytes.data() + 32);
+    const uint32_t animationCount = read_u32_le(bytes.data() + 32);
     if (animationCount > 10000) {
         error = "ANP3 contiene demasiadas animaciones.";
         return false;
@@ -754,61 +755,116 @@ bool parse_ifp_anp3(const std::vector<uint8_t>& bytes, IfpInfo& info,
 
     size_t offset = 36;
     info.animations.clear();
-    uint64_t consumedFrameBytes = 0;
+    uint64_t totalFrameBytes = 0;
+    uint64_t totalFrames = 0;
+
     for (uint32_t i = 0; i < animationCount; ++i) {
         if (offset > limit || limit - offset < 36) {
             error = "Tabla de animaciones ANP3 truncada.";
             return false;
         }
+
         IfpAnimationInfo animation;
         animation.name = read_fixed_name(bytes.data() + offset, 24);
-        const uint32_t tracks = read_u32_le(bytes.data() + offset + 24);
+        const uint32_t trackCount = read_u32_le(bytes.data() + offset + 24);
         const uint32_t declaredFramesSize = read_u32_le(bytes.data() + offset + 28);
         offset += 36;
-        if (tracks > 10000) {
+        if (trackCount > 10000) {
             error = "ANP3 contiene demasiados tracks en una animación.";
             return false;
         }
-        animation.tracks = tracks;
+
+        animation.tracks = trackCount;
+        animation.trackData.reserve(trackCount);
         uint64_t animationFrameBytes = 0;
 
-        for (uint32_t track = 0; track < tracks; ++track) {
+        for (uint32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
             if (offset > limit || limit - offset < 36) {
                 error = "Track ANP3 truncado.";
                 return false;
             }
-            const uint32_t frameType = read_u32_le(bytes.data() + offset + 24);
+
+            IfpTrack track;
+            track.name = read_fixed_name(bytes.data() + offset, 24);
+            track.frameType = read_u32_le(bytes.data() + offset + 24);
             const uint32_t frameCount = read_u32_le(bytes.data() + offset + 28);
+            track.boneId = (int32_t)read_u32_le(bytes.data() + offset + 32);
+            track.sourceIndex = trackIndex;
             offset += 36;
 
             uint32_t frameSize = 0;
-            switch (frameType) {
-                case 1: frameSize = 20; break; // child float
-                case 2: frameSize = 32; break; // root float
-                case 3: frameSize = 10; break; // child fixed-point
-                case 4: frameSize = 16; break; // root fixed-point
+            switch (track.frameType) {
+                case 1: frameSize = 20; break;
+                case 2: frameSize = 32; break;
+                case 3: frameSize = 10; break;
+                case 4: frameSize = 16; break;
                 default:
                     error = "Tipo de frame ANP3 no reconocido.";
                     return false;
             }
+
             const uint64_t frameBytes = (uint64_t)frameCount * frameSize;
-            if (frameBytes > limit - offset || frameBytes > GTA_MAX_FILE_BYTES) {
+            if (frameBytes > limit - offset || frameBytes > GTA_MAX_FILE_BYTES ||
+                totalFrames + frameCount > 1000000ULL) {
                 error = "Datos de frames ANP3 fuera de los límites.";
                 return false;
             }
+
+            track.keyFrames.reserve(frameCount);
+            for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+                const uint8_t* data = bytes.data() + offset + (size_t)frameIndex * frameSize;
+                IfpKeyFrame key;
+
+                if (track.frameType == 1 || track.frameType == 2) {
+                    key.rotation.x = read_f32_le(data + 0);
+                    key.rotation.y = read_f32_le(data + 4);
+                    key.rotation.z = read_f32_le(data + 8);
+                    key.rotation.w = read_f32_le(data + 12);
+                    key.time = read_f32_le(data + 16);
+                    if (track.frameType == 2) {
+                        key.translation.x = read_f32_le(data + 20);
+                        key.translation.y = read_f32_le(data + 24);
+                        key.translation.z = read_f32_le(data + 28);
+                        key.hasTranslation = true;
+                    }
+                } else {
+                    key.rotation.x = (float)read_i16_le(data + 0) / 4096.0f;
+                    key.rotation.y = (float)read_i16_le(data + 2) / 4096.0f;
+                    key.rotation.z = (float)read_i16_le(data + 4) / 4096.0f;
+                    key.rotation.w = (float)read_i16_le(data + 6) / 4096.0f;
+                    key.time = (float)read_i16_le(data + 8) / 60.0f;
+                    if (track.frameType == 4) {
+                        key.translation.x = (float)read_i16_le(data + 10) / 1024.0f;
+                        key.translation.y = (float)read_i16_le(data + 12) / 1024.0f;
+                        key.translation.z = (float)read_i16_le(data + 14) / 1024.0f;
+                        key.hasTranslation = true;
+                    }
+                }
+
+                if (!std::isfinite(key.time)) {
+                    error = "ANP3 contiene un tiempo de keyframe inválido.";
+                    return false;
+                }
+                animation.duration = std::max(animation.duration, key.time);
+                track.keyFrames.push_back(key);
+            }
+
             offset += (size_t)frameBytes;
             animationFrameBytes += frameBytes;
             animation.frames += frameCount;
+            totalFrames += frameCount;
+            animation.trackData.push_back(track);
         }
 
         if (animationFrameBytes != declaredFramesSize) {
             error = "El tamaño declarado de frames ANP3 no coincide con sus tracks.";
             return false;
         }
-        consumedFrameBytes += animationFrameBytes;
+        totalFrameBytes += animationFrameBytes;
         info.animations.push_back(animation);
     }
-    if (offset > limit || consumedFrameBytes > GTA_MAX_FILE_BYTES) {
+
+    if (offset > limit || totalFrameBytes > GTA_MAX_FILE_BYTES) {
         error = "Estructura ANP3 inválida.";
         return false;
     }
@@ -821,12 +877,14 @@ bool parse_ifp_anpk(const std::vector<uint8_t>& bytes, IfpInfo& info,
         error = "Cabecera ANPK inválida.";
         return false;
     }
+
     const uint32_t declaredSize = read_u32_le(bytes.data() + 4);
     const uint64_t limit64 = 8ULL + declaredSize;
     if (limit64 > bytes.size() || limit64 < 16) {
         error = "Tamaño ANPK fuera de los límites del recurso.";
         return false;
     }
+
     const size_t limit = (size_t)limit64;
     size_t offset = 8;
     const uint8_t* infoData = nullptr;
@@ -842,14 +900,17 @@ bool parse_ifp_anpk(const std::vector<uint8_t>& bytes, IfpInfo& info,
         error = "ANPK contiene demasiadas animaciones.";
         return false;
     }
+
     info.version = "ANPK";
     info.internalName = read_fixed_name(infoData + 4, infoLength - 4);
     info.animations.clear();
+    uint64_t totalFrames = 0;
 
     for (uint32_t i = 0; i < animationCount; ++i) {
         const uint8_t* nameData = nullptr;
         const uint8_t* dganData = nullptr;
-        uint32_t nameLength = 0, dganLength = 0;
+        uint32_t nameLength = 0;
+        uint32_t dganLength = 0;
         if (!take_ifp_section(bytes.data(), limit, offset, "NAME", nameData, nameLength) ||
             !take_ifp_section(bytes.data(), limit, offset, "DGAN", dganData, dganLength)) {
             error = "Sección NAME/DGAN ANPK truncada.";
@@ -866,14 +927,16 @@ bool parse_ifp_anpk(const std::vector<uint8_t>& bytes, IfpInfo& info,
             error = "INFO interno de DGAN inválido.";
             return false;
         }
+
         const uint32_t trackCount = read_u32_le(animInfo);
         if (trackCount > 10000) {
             error = "ANPK contiene demasiados tracks.";
             return false;
         }
         animation.tracks = trackCount;
+        animation.trackData.reserve(trackCount);
 
-        for (uint32_t track = 0; track < trackCount; ++track) {
+        for (uint32_t trackIndex = 0; trackIndex < trackCount; ++trackIndex) {
             const uint8_t* cpanData = nullptr;
             uint32_t cpanLength = 0;
             if (!take_ifp_section(dganData, dganLength, dganOffset, "CPAN",
@@ -881,39 +944,102 @@ bool parse_ifp_anpk(const std::vector<uint8_t>& bytes, IfpInfo& info,
                 error = "Sección CPAN ANPK truncada.";
                 return false;
             }
+
             size_t cpanOffset = 0;
             const uint8_t* animData = nullptr;
             uint32_t animDataLength = 0;
             if (!take_ifp_section(cpanData, cpanLength, cpanOffset, "ANIM",
                                   animData, animDataLength) ||
-                animDataLength < 40) {
+                (animDataLength != 40 && animDataLength != 44 && animDataLength != 48)) {
                 error = "Sección ANIM ANPK inválida.";
                 return false;
             }
 
+            IfpTrack track;
+            track.name = read_fixed_name(animData, 24);
+            track.sourceIndex = trackIndex;
             const uint32_t frameCount = read_u32_le(animData + 28);
-            animation.frames += frameCount;
+            if (animDataLength >= 44) {
+                track.boneId = (int32_t)read_u32_le(animData + 40);
+            }
+
+            if (frameCount > 1000000U || totalFrames + frameCount > 1000000ULL) {
+                error = "ANPK contiene demasiados keyframes.";
+                return false;
+            }
+
             if (frameCount) {
                 if (cpanOffset > cpanLength || cpanLength - cpanOffset < 8) {
                     error = "Faltan keyframes en un track ANPK.";
                     return false;
                 }
+
                 const char* keyType = reinterpret_cast<const char*>(cpanData + cpanOffset);
-                const uint32_t keyLength = read_u32_le(cpanData + cpanOffset + 4);
+                const uint8_t* keyData = nullptr;
+                uint32_t keyLength = 0;
+                if (!take_ifp_section(cpanData, cpanLength, cpanOffset, nullptr,
+                                      keyData, keyLength)) {
+                    error = "Sección de keyframes ANPK truncada.";
+                    return false;
+                }
+
                 uint32_t frameSize = 0;
-                if (std::memcmp(keyType, "KR00", 4) == 0) frameSize = 20;
-                else if (std::memcmp(keyType, "KRT0", 4) == 0) frameSize = 32;
-                else if (std::memcmp(keyType, "KRTS", 4) == 0) frameSize = 44;
-                else {
+                if (std::memcmp(keyType, "KR00", 4) == 0) {
+                    frameSize = 20;
+                    track.frameType = 1;
+                } else if (std::memcmp(keyType, "KRT0", 4) == 0) {
+                    frameSize = 32;
+                    track.frameType = 2;
+                } else if (std::memcmp(keyType, "KRTS", 4) == 0) {
+                    frameSize = 44;
+                    track.frameType = 3;
+                } else {
                     error = "Tipo de keyframe ANPK no compatible.";
                     return false;
                 }
-                if ((uint64_t)frameCount * frameSize != keyLength ||
-                    keyLength > cpanLength - cpanOffset - 8) {
+
+                if ((uint64_t)frameCount * frameSize != keyLength) {
                     error = "Longitud de keyframes ANPK incorrecta.";
                     return false;
                 }
+
+                track.keyFrames.reserve(frameCount);
+                for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+                    const uint8_t* data = keyData + (size_t)frameIndex * frameSize;
+                    IfpKeyFrame key;
+                    key.rotation.x = -read_f32_le(data + 0);
+                    key.rotation.y = -read_f32_le(data + 4);
+                    key.rotation.z = -read_f32_le(data + 8);
+                    key.rotation.w = read_f32_le(data + 12);
+
+                    if (track.frameType >= 2) {
+                        key.translation.x = read_f32_le(data + 16);
+                        key.translation.y = read_f32_le(data + 20);
+                        key.translation.z = read_f32_le(data + 24);
+                        key.hasTranslation = true;
+                    }
+                    if (track.frameType == 3) {
+                        key.scale.x = read_f32_le(data + 28);
+                        key.scale.y = read_f32_le(data + 32);
+                        key.scale.z = read_f32_le(data + 36);
+                        key.hasScale = true;
+                        key.time = read_f32_le(data + 40);
+                    } else {
+                        key.time = read_f32_le(data + (track.frameType == 2 ? 28 : 16));
+                    }
+
+                    if (!std::isfinite(key.time)) {
+                        error = "ANPK contiene un tiempo de keyframe inválido.";
+                        return false;
+                    }
+                    animation.duration = std::max(animation.duration, key.time);
+                    track.keyFrames.push_back(key);
+                }
             }
+
+            animation.frames += frameCount;
+            totalFrames += frameCount;
+            animation.trackData.push_back(track);
         }
         info.animations.push_back(animation);
     }
@@ -936,7 +1062,152 @@ bool parse_ifp(const std::vector<uint8_t>& bytes, IfpInfo& info,
     return false;
 }
 
-bool create_dynos_model(GtaModelState* state,
+GtaModelState* find_gta_model(uint32_t modelId) {
+    for (GtaModelState* state : sGtaModels) {
+        if (state && state->modelId == modelId) return state;
+    }
+    return nullptr;
+}
+
+int32_t find_hanim_node_by_id(const GtaModelState* state, int32_t boneId) {
+    if (!state || !state->hierarchy || boneId < 0) return -1;
+    for (int32_t node = 0; node < state->hierarchy->numNodes; ++node) {
+        if (state->hierarchy->nodeInfo[node].id == boneId &&
+            node < (int32_t)state->boneFrames.size() &&
+            state->boneFrames[(size_t)node]) {
+            return node;
+        }
+    }
+    return -1;
+}
+
+void map_ifp_tracks(GtaModelState* state, IfpAnimationInfo& animation) {
+    if (!state || !state->hierarchy) return;
+    const int32_t nodeCount = state->hierarchy->numNodes;
+    std::vector<bool> used((size_t)nodeCount, false);
+    animation.matchedById = 0;
+    animation.mappedByOrder = 0;
+
+    for (IfpTrack& track : animation.trackData) {
+        track.targetNode = -1;
+        if (track.keyFrames.empty()) continue;
+
+        int32_t node = find_hanim_node_by_id(state, track.boneId);
+        if (node >= 0 && !used[(size_t)node]) {
+            track.targetNode = node;
+            used[(size_t)node] = true;
+            animation.matchedById++;
+            continue;
+        }
+
+        if (nodeCount <= 0) continue;
+        const size_t sourceCount = std::max<size_t>(1, animation.trackData.size());
+        int32_t candidate = (int32_t)(((uint64_t)track.sourceIndex *
+                                       (uint64_t)nodeCount) / sourceCount);
+        if (candidate >= nodeCount) candidate = nodeCount - 1;
+
+        int32_t selected = -1;
+        for (int32_t distance = 0; distance < nodeCount && selected < 0; ++distance) {
+            const int32_t left = candidate - distance;
+            const int32_t right = candidate + distance;
+            if (left >= 0 && left < nodeCount && !used[(size_t)left] &&
+                state->boneFrames[(size_t)left]) selected = left;
+            if (selected < 0 && right >= 0 && right < nodeCount &&
+                !used[(size_t)right] && state->boneFrames[(size_t)right]) selected = right;
+        }
+        if (selected >= 0) {
+            track.targetNode = selected;
+            used[(size_t)selected] = true;
+            animation.mappedByOrder++;
+        }
+    }
+}
+
+IfpKeyFrame sample_ifp_track(const IfpTrack& track, float time) {
+    if (track.keyFrames.empty()) return IfpKeyFrame();
+    if (time <= track.keyFrames.front().time) return track.keyFrames.front();
+    if (time >= track.keyFrames.back().time) return track.keyFrames.back();
+
+    for (size_t i = 1; i < track.keyFrames.size(); ++i) {
+        const IfpKeyFrame& next = track.keyFrames[i];
+        if (time > next.time) continue;
+        const IfpKeyFrame& previous = track.keyFrames[i - 1];
+        const float span = next.time - previous.time;
+        const float alpha = span > 0.000001f
+                                ? std::max(0.0f, std::min(1.0f, (time - previous.time) / span))
+                                : 0.0f;
+        IfpKeyFrame result;
+        result.rotation = rw::slerp(previous.rotation, next.rotation, alpha);
+        result.translation.x = previous.translation.x +
+            (next.translation.x - previous.translation.x) * alpha;
+        result.translation.y = previous.translation.y +
+            (next.translation.y - previous.translation.y) * alpha;
+        result.translation.z = previous.translation.z +
+            (next.translation.z - previous.translation.z) * alpha;
+        result.scale.x = previous.scale.x + (next.scale.x - previous.scale.x) * alpha;
+        result.scale.y = previous.scale.y + (next.scale.y - previous.scale.y) * alpha;
+        result.scale.z = previous.scale.z + (next.scale.z - previous.scale.z) * alpha;
+        result.time = time;
+        result.hasTranslation = previous.hasTranslation || next.hasTranslation;
+        result.hasScale = previous.hasScale || next.hasScale;
+        return result;
+    }
+    return track.keyFrames.back();
+}
+
+bool apply_gta_animation(GtaModelState* state) {
+    if (!state || !state->hierarchy || state->activeAnimation < 0 ||
+        (size_t)state->activeAnimation >= state->animations.size()) return false;
+
+    IfpAnimationInfo& animation = state->animations[(size_t)state->activeAnimation];
+    map_ifp_tracks(state, animation);
+
+    for (size_t i = 0; i < state->boneFrames.size(); ++i) {
+        rw::Frame* frame = state->boneFrames[i];
+        if (frame && i < state->restMatrices.size()) {
+            frame->transform(&state->restMatrices[i], rw::COMBINEREPLACE);
+        }
+    }
+
+    float animationTime = state->animationTime;
+    if (animation.duration > 0.0001f) {
+        animationTime = std::fmod(animationTime, animation.duration);
+    } else {
+        animationTime = 0.0f;
+    }
+
+    for (IfpTrack& track : animation.trackData) {
+        if (track.targetNode < 0 ||
+            (size_t)track.targetNode >= state->boneFrames.size() ||
+            track.keyFrames.empty()) continue;
+
+        rw::Frame* frame = state->boneFrames[(size_t)track.targetNode];
+        if (!frame || (size_t)track.targetNode >= state->restMatrices.size()) continue;
+        const IfpKeyFrame key = sample_ifp_track(track, animationTime);
+        rw::Matrix local = state->restMatrices[(size_t)track.targetNode];
+        local.rotate(key.rotation, rw::COMBINEPOSTCONCAT);
+
+        if (key.hasTranslation) {
+            const rw::V3d& restPosition =
+                state->restMatrices[(size_t)track.targetNode].pos;
+            local.pos.x = restPosition.x + key.translation.x;
+            local.pos.y = restPosition.y + key.translation.y;
+            local.pos.z = restPosition.z + key.translation.z;
+        }
+        if (key.hasScale) {
+            local.scale(&key.scale, rw::COMBINEPOSTCONCAT);
+        }
+        frame->transform(&local, rw::COMBINEREPLACE);
+    }
+
+    if (state->clump && state->clump->getFrame()) {
+        state->clump->getFrame()->syncHierarchyLTM();
+    }
+    update_gta_model_vertices(state);
+    return true;
+}
+
+bool create_dynos_model(bool create_dynos_model(GtaModelState* state,
                         uint32_t& modelId, std::string& error) {
     if (!gLuaActiveMod) {
         error = "El modelo debe cargarse desde el contexto de un mod Lua.";
